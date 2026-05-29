@@ -14,8 +14,9 @@ export default function Home() {
   const [selectedSeasonId, setSelectedSeasonId] = useState<string>('');
   const [password, setPassword] = useState('');
   
-  // UK Time State
+  // Time States
   const [ukTime, setUkTime] = useState<string>('');
+  const [currentTime, setCurrentTime] = useState(Date.now());
 
   // League States
   const [homeTeamId, setHomeTeamId] = useState('');
@@ -29,15 +30,16 @@ export default function Home() {
   const [transferFee, setTransferFee] = useState<number | ''>('');
 
   // eBay States
-  const [myManagerId, setMyManagerId] = useState(''); // Global identity for bidding
+  const [myManagerId, setMyManagerId] = useState('');
   const [auctionPlayerName, setAuctionPlayerName] = useState('');
   const [auctionStartBid, setAuctionStartBid] = useState<number | ''>('');
   const [bidInputs, setBidInputs] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    // 1. Start UK Time Clock
+    // 1. Start UK Time & Countdown Ticker (Updates every 1 second)
     const timer = setInterval(() => {
       setUkTime(new Date().toLocaleTimeString('en-GB', { timeZone: 'Europe/London' }));
+      setCurrentTime(Date.now());
     }, 1000);
 
     // 2. Fetch Initial Data
@@ -59,7 +61,8 @@ export default function Home() {
     }
     
     async function fetchAuctions() {
-      const { data } = await supabase.from('auctions').select('*, highest_bidder:highest_bidder_id(name)').order('created_at', { ascending: false });
+      // Filter out 'archived' auctions so they disappear when finished
+      const { data } = await supabase.from('auctions').select('*, highest_bidder:highest_bidder_id(name)').neq('status', 'archived').order('created_at', { ascending: false });
       if (data) setAuctions(data);
     }
 
@@ -134,31 +137,47 @@ export default function Home() {
     }
   };
 
-  // eBay Functions
+  // ==========================================
+  // NEW: Advanced eBay Functions
+  // ==========================================
+  
   const listAuction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password !== "1") return alert("Incorrect Admin password!");
     if (!auctionPlayerName) return alert("Enter a player name!");
-    await supabase.from('auctions').insert([{ player_name: auctionPlayerName, current_bid: auctionStartBid || 0 }]);
+    // Status 'pending' means it's listed but timer hasn't started
+    await supabase.from('auctions').insert([{ player_name: auctionPlayerName, current_bid: auctionStartBid || 0, status: 'pending' }]);
     setAuctionPlayerName(''); setAuctionStartBid(''); setPassword('');
   };
 
-  const placeBid = async (auctionId: string, currentBid: number) => {
-    if (!myManagerId) return alert("Select 'Who are you?' at the top of the page first!");
+  const startAuctionTimer = async (auctionId: string) => {
+    if (password !== "1") {
+       const promptPass = window.prompt("Admin Password required to start timer:");
+       if (promptPass !== "1") return alert("Incorrect password.");
+    }
+    // Set timer for exactly 30 seconds from right now
+    const endTime = new Date(Date.now() + 30000).toISOString();
+    await supabase.from('auctions').update({ status: 'active', end_time: endTime }).eq('id', auctionId);
+  };
+
+  const placeBid = async (auctionId: string, currentBid: number, currentEndTime: string) => {
+    if (!myManagerId) return alert("Select 'Who is playing right now?' at the top of the page first!");
     const bidValue = bidInputs[auctionId];
     if (!bidValue || bidValue <= currentBid) return alert("Bid must be higher than the current bid!");
     
-    // Update bid in database (Supabase Realtime will auto-refresh everyone's screen)
-    await supabase.from('auctions').update({ current_bid: bidValue, highest_bidder_id: myManagerId }).eq('id', auctionId);
-    setBidInputs({ ...bidInputs, [auctionId]: 0 }); // Clear input
+    // Add exactly 10 seconds to the CURRENT countdown timer
+    const newEndTime = new Date(new Date(currentEndTime).getTime() + 10000).toISOString();
+    
+    await supabase.from('auctions').update({ current_bid: bidValue, highest_bidder_id: myManagerId, end_time: newEndTime }).eq('id', auctionId);
+    setBidInputs({ ...bidInputs, [auctionId]: '' as any });
   };
 
-  const closeAuction = async (auctionId: string) => {
+  const archiveAuction = async (auctionId: string) => {
     if (password !== "1") {
-       const promptPass = window.prompt("Admin Password required to close auction:");
+       const promptPass = window.prompt("Admin Password required to clear auction:");
        if (promptPass !== "1") return alert("Incorrect password.");
     }
-    await supabase.from('auctions').update({ status: 'closed' }).eq('id', auctionId);
+    await supabase.from('auctions').update({ status: 'archived' }).eq('id', auctionId);
   };
 
   if (loading) return <div className="p-10 text-center text-gray-500 font-medium">Loading the pitch...</div>;
@@ -338,7 +357,7 @@ export default function Home() {
             <div className="bg-blue-50 border border-blue-200 p-6 rounded-2xl flex flex-col sm:flex-row items-center justify-center gap-4 shadow-sm">
                <span className="font-bold text-blue-800">Who is playing right now?</span>
                <select 
-                 className="p-3 bg-white border border-blue-300 text-blue-900 font-bold rounded-lg focus:ring-2 focus:ring-blue-500 outline-none w-64 shadow-sm"
+                 className="p-3 bg-white border border-blue-300 text-blue-900 font-bold rounded-lg focus:ring-2 focus:ring-blue-500 outline-none w-64 shadow-sm cursor-pointer"
                  value={myManagerId}
                  onChange={(e) => setMyManagerId(e.target.value)}
                >
@@ -353,46 +372,72 @@ export default function Home() {
                <form onSubmit={listAuction} className="flex flex-col md:flex-row items-end gap-4">
                   <div className="w-full md:w-1/3">
                     <label className="text-xs font-bold text-gray-500 mb-1 block">Player Name</label>
-                    <input type="text" className="w-full p-2 border rounded-lg bg-gray-50" value={auctionPlayerName} onChange={e => setAuctionPlayerName(e.target.value)} />
+                    <input type="text" className="w-full p-2 border rounded-lg bg-gray-50 outline-none" value={auctionPlayerName} onChange={e => setAuctionPlayerName(e.target.value)} />
                   </div>
                   <div className="w-full md:w-1/4">
                     <label className="text-xs font-bold text-gray-500 mb-1 block">Starting Bid (£M)</label>
-                    <input type="number" step="0.1" className="w-full p-2 border rounded-lg bg-gray-50" value={auctionStartBid} onChange={e => setAuctionStartBid(e.target.value === '' ? '' : parseFloat(e.target.value))} />
+                    <input type="number" step="0.1" className="w-full p-2 border rounded-lg bg-gray-50 outline-none" value={auctionStartBid} onChange={e => setAuctionStartBid(e.target.value === '' ? '' : parseFloat(e.target.value))} />
                   </div>
                   <div className="w-full md:w-1/4">
                     <label className="text-xs font-bold text-gray-500 mb-1 block">Password</label>
-                    <input type="password" className="w-full p-2 border rounded-lg bg-gray-50" value={password} onChange={e => setPassword(e.target.value)} />
+                    <input type="password" className="w-full p-2 border rounded-lg bg-gray-50 outline-none" value={password} onChange={e => setPassword(e.target.value)} />
                   </div>
-                  <button type="submit" className="w-full md:w-auto bg-gray-800 text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-700">List</button>
+                  <button type="submit" className="w-full md:w-auto bg-gray-800 text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-700 transition-colors">List</button>
                </form>
             </div>
 
             {/* Active Auctions Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {auctions.map(auction => (
-                 <div key={auction.id} className={`p-6 rounded-2xl border-2 transition-all ${auction.status === 'active' ? 'bg-white border-blue-400 shadow-lg shadow-blue-100' : 'bg-gray-50 border-gray-200 opacity-75'}`}>
+              {auctions.map(auction => {
+                 // Countdown Timer Logic
+                 const endTimeMs = auction.end_time ? new Date(auction.end_time).getTime() : 0;
+                 const timeLeft = auction.end_time ? Math.max(0, Math.floor((endTimeMs - currentTime) / 1000)) : 0;
+                 
+                 // Display States
+                 const isPending = auction.status === 'pending';
+                 const isActive = auction.status === 'active' && timeLeft > 0;
+                 const isFinished = auction.status === 'active' && auction.end_time && timeLeft === 0;
+
+                 let cardStyle = "p-6 rounded-2xl border-2 transition-all ";
+                 if (isPending) cardStyle += "bg-white border-yellow-400 shadow-lg";
+                 else if (isActive) cardStyle += "bg-white border-blue-400 shadow-lg shadow-blue-100";
+                 else if (isFinished) cardStyle += "bg-green-50 border-green-500 shadow-lg";
+
+                 return (
+                 <div key={auction.id} className={cardStyle}>
                     
+                    {/* Header Row */}
                     <div className="flex justify-between items-start mb-4">
                        <h3 className="text-3xl font-black text-gray-900">{auction.player_name}</h3>
-                       {auction.status === 'active' ? (
-                          <span className="bg-red-100 text-red-600 text-xs font-black uppercase px-3 py-1 rounded-full border border-red-200 animate-pulse">Live</span>
-                       ) : (
-                          <span className="bg-gray-200 text-gray-500 text-xs font-black uppercase px-3 py-1 rounded-full">Closed</span>
-                       )}
+                       {isPending && <span className="bg-yellow-100 text-yellow-700 text-xs font-black uppercase px-3 py-1 rounded-full border border-yellow-200">Waiting</span>}
+                       {isActive && <span className="bg-red-100 text-red-600 text-xs font-black uppercase px-3 py-1 rounded-full border border-red-200 animate-pulse flex items-center gap-1">LIVE ⏳ {timeLeft}s</span>}
+                       {isFinished && <span className="bg-green-100 text-green-700 text-xs font-black uppercase px-3 py-1 rounded-full border border-green-200">SOLD 🎉</span>}
                     </div>
 
-                    <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 mb-6 flex justify-between items-center">
+                    {/* Price Display */}
+                    <div className={`rounded-xl p-4 border mb-6 flex justify-between items-center ${isFinished ? 'bg-green-100 border-green-200' : 'bg-gray-50 border-gray-100'}`}>
                        <div>
-                         <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Current Highest Bid</p>
-                         <p className="text-4xl font-black text-blue-600">£{auction.current_bid}M</p>
+                         <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">{isFinished ? 'Winning Bid' : 'Current Highest Bid'}</p>
+                         <p className={`text-4xl font-black ${isFinished ? 'text-green-700' : 'text-blue-600'}`}>£{auction.current_bid}M</p>
                        </div>
                        <div className="text-right">
-                         <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Held By</p>
+                         <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">{isFinished ? 'Won By' : 'Held By'}</p>
                          <p className="text-lg font-bold text-gray-800">{auction.highest_bidder?.name || 'No bids yet'}</p>
                        </div>
                     </div>
 
-                    {auction.status === 'active' && (
+                    {/* Pending State: Start Button */}
+                    {isPending && (
+                       <button 
+                         onClick={() => startAuctionTimer(auction.id)}
+                         className="w-full bg-yellow-400 text-yellow-900 px-6 py-3 rounded-xl font-black text-lg hover:bg-yellow-500 transition-colors"
+                       >
+                         Admin: Start 30s Timer
+                       </button>
+                    )}
+
+                    {/* Active State: Bid Input */}
+                    {isActive && (
                        <div className="flex gap-2">
                           <input 
                             type="number" 
@@ -403,21 +448,22 @@ export default function Home() {
                             onChange={(e) => setBidInputs({...bidInputs, [auction.id]: parseFloat(e.target.value)})}
                           />
                           <button 
-                            onClick={() => placeBid(auction.id, auction.current_bid)}
-                            className="bg-blue-600 text-white px-6 rounded-xl font-black text-lg hover:bg-blue-700 active:scale-95 transition-transform"
+                            onClick={() => placeBid(auction.id, auction.current_bid, auction.end_time)}
+                            className="bg-blue-600 text-white px-8 rounded-xl font-black text-lg hover:bg-blue-700 active:scale-95 transition-transform"
                           >
                             BID
                           </button>
                        </div>
                     )}
 
-                    {auction.status === 'active' && (
-                      <button onClick={() => closeAuction(auction.id)} className="w-full mt-4 text-xs font-bold text-gray-400 hover:text-red-500 transition-colors uppercase tracking-widest">
-                        Admin: Close Auction
+                    {/* Finished State / Admin Clear */}
+                    {(isFinished || isPending) && (
+                      <button onClick={() => archiveAuction(auction.id)} className="w-full mt-4 text-xs font-bold text-gray-400 hover:text-red-500 transition-colors uppercase tracking-widest">
+                        Admin: Clear / Hide Auction
                       </button>
                     )}
                  </div>
-              ))}
+              )})}
               
               {auctions.length === 0 && (
                 <div className="col-span-full text-center py-12 bg-white rounded-2xl border border-dashed border-gray-300">
