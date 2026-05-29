@@ -254,7 +254,7 @@ export default function Home() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                {managerBalances.map(mb => (
                   <div key={mb.id} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-center items-center">
-                     <h4 className="text-gray-500 font-bold uppercase tracking-wide text-xs mb-2">{mb.name}'s Net Spend</h4>
+                     <h4 className="text-gray-500 font-bold uppercase tracking-wide text-xs mb-2">{mb.name}&apos;s Net Spend</h4>
                      <p className={`text-3xl font-black ${mb.net >= 0 ? 'text-green-500' : 'text-red-500'}`}>{mb.net >= 0 ? '+' : ''}£{mb.net}M</p>
                   </div>
                ))}
@@ -353,4 +353,82 @@ export default function Home() {
                <form onSubmit={listAuction} className="flex flex-col md:flex-row items-end gap-4">
                   <div className="w-full md:w-1/3">
                     <label className="text-xs font-bold text-gray-500 mb-1 block">Player Name</label>
-                    <input type="text" className="w-full p-2 border rounded-lg bg-gray-50" value={auctionPlayerName} onChange={e => setAuctionPlayerName(e.target.value
+                    <input type="text" className="w-full p-2 border rounded-lg bg-gray-50" value={auctionPlayerName} onChange={e => setAuctionPlayerName(e.target.value)} />
+                  </div>
+                  <div className="w-full md:w-1/4">
+                    <label className="text-xs font-bold text-gray-500 mb-1 block">Starting Bid (£M)</label>
+                    <input type="number" step="0.1" className="w-full p-2 border rounded-lg bg-gray-50" value={auctionStartBid} onChange={e => setAuctionStartBid(e.target.value === '' ? '' : parseFloat(e.target.value))} />
+                  </div>
+                  <div className="w-full md:w-1/4">
+                    <label className="text-xs font-bold text-gray-500 mb-1 block">Password</label>
+                    <input type="password" className="w-full p-2 border rounded-lg bg-gray-50" value={password} onChange={e => setPassword(e.target.value)} />
+                  </div>
+                  <button type="submit" className="w-full md:w-auto bg-gray-800 text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-700">List</button>
+               </form>
+            </div>
+
+            {/* Active Auctions Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {auctions.map(auction => (
+                 <div key={auction.id} className={`p-6 rounded-2xl border-2 transition-all ${auction.status === 'active' ? 'bg-white border-blue-400 shadow-lg shadow-blue-100' : 'bg-gray-50 border-gray-200 opacity-75'}`}>
+                    
+                    <div className="flex justify-between items-start mb-4">
+                       <h3 className="text-3xl font-black text-gray-900">{auction.player_name}</h3>
+                       {auction.status === 'active' ? (
+                          <span className="bg-red-100 text-red-600 text-xs font-black uppercase px-3 py-1 rounded-full border border-red-200 animate-pulse">Live</span>
+                       ) : (
+                          <span className="bg-gray-200 text-gray-500 text-xs font-black uppercase px-3 py-1 rounded-full">Closed</span>
+                       )}
+                    </div>
+
+                    <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 mb-6 flex justify-between items-center">
+                       <div>
+                         <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Current Highest Bid</p>
+                         <p className="text-4xl font-black text-blue-600">£{auction.current_bid}M</p>
+                       </div>
+                       <div className="text-right">
+                         <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Held By</p>
+                         <p className="text-lg font-bold text-gray-800">{auction.highest_bidder?.name || 'No bids yet'}</p>
+                       </div>
+                    </div>
+
+                    {auction.status === 'active' && (
+                       <div className="flex gap-2">
+                          <input 
+                            type="number" 
+                            step="0.1"
+                            placeholder={`> ${auction.current_bid}`}
+                            className="flex-1 p-3 border-2 border-gray-200 rounded-xl font-bold text-lg outline-none focus:border-blue-500"
+                            value={bidInputs[auction.id] || ''}
+                            onChange={(e) => setBidInputs({...bidInputs, [auction.id]: parseFloat(e.target.value)})}
+                          />
+                          <button 
+                            onClick={() => placeBid(auction.id, auction.current_bid)}
+                            className="bg-blue-600 text-white px-6 rounded-xl font-black text-lg hover:bg-blue-700 active:scale-95 transition-transform"
+                          >
+                            BID
+                          </button>
+                       </div>
+                    )}
+
+                    {auction.status === 'active' && (
+                      <button onClick={() => closeAuction(auction.id)} className="w-full mt-4 text-xs font-bold text-gray-400 hover:text-red-500 transition-colors uppercase tracking-widest">
+                        Admin: Close Auction
+                      </button>
+                    )}
+                 </div>
+              ))}
+              
+              {auctions.length === 0 && (
+                <div className="col-span-full text-center py-12 bg-white rounded-2xl border border-dashed border-gray-300">
+                  <p className="text-gray-500 font-bold text-lg">The Auction House is currently empty.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
