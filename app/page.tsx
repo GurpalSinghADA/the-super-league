@@ -113,6 +113,10 @@ export default function Home() {
     }
   };
 
+  // --- ADMIN CHECK ---
+  // If the logged-in user is named 'Gurpal', they get automatic admin rights
+  const isAdmin = managers.find(m => m.id === myManagerId)?.name === 'Gurpal';
+
   // Filter Data
   const isTotal = selectedSeasonId === 'all';
   const currentSeasonMatches = isTotal ? matches : matches.filter(match => match.season_id === selectedSeasonId);
@@ -152,7 +156,7 @@ export default function Home() {
   const submitMatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isTotal) return alert("Select a specific season to log a match!");
-    if (password !== "1") return alert("Incorrect admin password!");
+    if (!isAdmin && password !== "1") return alert("Incorrect admin password!");
     if (!homeTeamId || !awayTeamId || homeTeamId === awayTeamId) return alert("Select valid teams!");
     const { error } = await supabase.from('matches').insert([{ season_id: selectedSeasonId, home_manager_id: homeTeamId, away_manager_id: awayTeamId, home_goals: homeGoals, away_goals: awayGoals }]);
     if (!error) {
@@ -165,7 +169,7 @@ export default function Home() {
   const submitTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isTotal) return alert("Select a specific season to log a transfer!");
-    if (password !== "1") return alert("Incorrect admin password!");
+    if (!isAdmin && password !== "1") return alert("Incorrect admin password!");
     if (!playerName || !acquiringManagerId || transferFee === '') return alert("Fill all details!");
     const { error } = await supabase.from('transfers').insert([{ season_id: selectedSeasonId, manager_id: acquiringManagerId, player_name: playerName, transfer_fee: transferFee }]);
     if (!error) {
@@ -178,14 +182,14 @@ export default function Home() {
   const listAuction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isTotal) return alert("Select a specific season to list a player!");
-    if (password !== "1") return alert("Incorrect Admin password!");
+    if (!isAdmin && password !== "1") return alert("Incorrect Admin password!");
     if (!auctionPlayerName) return alert("Enter a player name!");
     await supabase.from('auctions').insert([{ season_id: selectedSeasonId, player_name: auctionPlayerName, current_bid: auctionStartBid || 0, status: 'pending' }]);
     setAuctionPlayerName(''); setAuctionStartBid(''); setPassword('');
   };
 
   const startAuctionTimer = async (auctionId: string) => {
-    if (password !== "1") {
+    if (!isAdmin && password !== "1") {
        const promptPass = window.prompt("Admin Password required to start timer:");
        if (promptPass !== "1") return alert("Incorrect password.");
     }
@@ -202,7 +206,7 @@ export default function Home() {
   };
 
   const archiveAuction = async (auctionId: string) => {
-    if (password !== "1") {
+    if (!isAdmin && password !== "1") {
        const promptPass = window.prompt("Admin Password required:");
        if (promptPass !== "1") return alert("Incorrect password.");
     }
@@ -290,6 +294,7 @@ export default function Home() {
             The Super League
           </h1>
           <p className="mt-2 text-gray-500 font-medium">Official Tracker, Auctions & Awards</p>
+          {isAdmin && <p className="text-xs font-black text-blue-500 uppercase tracking-widest mt-2 border border-blue-200 inline-block px-3 py-1 rounded-full bg-blue-50">Commissioner Access Granted</p>}
         </div>
         
         {/* Global Navigation & Controls */}
@@ -302,7 +307,6 @@ export default function Home() {
           </div>
           
           <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto justify-end">
-            {/* Identity Badge (Replaces Dropdown) */}
             <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-2 rounded-lg">
                <span className="text-xl">👤</span>
                <span className="text-blue-900 font-black tracking-wide">{managers.find(m => m.id === myManagerId)?.name}</span>
@@ -365,11 +369,13 @@ export default function Home() {
                         </div>
                      </div>
                      <div className="flex flex-col md:flex-row gap-4 items-end pt-2">
-                       <div className="flex flex-col w-full md:w-1/3">
-                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Admin Password</label>
-                         <input type="password" placeholder="••••••••" className="p-3 border rounded-lg w-full outline-none" value={password} onChange={(e) => setPassword(e.target.value)} />
-                       </div>
-                       <button type="submit" className="w-full md:w-2/3 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-lg shadow-md transition-all">Submit Final Score</button>
+                       {!isAdmin && (
+                         <div className="flex flex-col w-full md:w-1/3">
+                           <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Admin Password</label>
+                           <input type="password" placeholder="••••••••" className="p-3 border rounded-lg w-full outline-none" value={password} onChange={(e) => setPassword(e.target.value)} />
+                         </div>
+                       )}
+                       <button type="submit" className={`w-full ${isAdmin ? '' : 'md:w-2/3'} bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-lg shadow-md transition-all`}>Submit Final Score</button>
                      </div>
                   </form>
                </div>
@@ -416,11 +422,13 @@ export default function Home() {
                         </div>
                      </div>
                      <div className="flex flex-col md:flex-row gap-4 items-end pt-2">
-                       <div className="flex flex-col w-full md:w-1/3">
-                         <label className="text-xs font-bold text-gray-500 uppercase mb-2">Admin Password</label>
-                         <input type="password" placeholder="••••••••" className="p-3 border rounded-lg w-full outline-none" value={password} onChange={(e) => setPassword(e.target.value)} />
-                       </div>
-                       <button type="submit" className="w-full md:w-2/3 bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-lg shadow-md">Confirm Transfer</button>
+                       {!isAdmin && (
+                         <div className="flex flex-col w-full md:w-1/3">
+                           <label className="text-xs font-bold text-gray-500 uppercase mb-2">Admin Password</label>
+                           <input type="password" placeholder="••••••••" className="p-3 border rounded-lg w-full outline-none" value={password} onChange={(e) => setPassword(e.target.value)} />
+                         </div>
+                       )}
+                       <button type="submit" className={`w-full ${isAdmin ? '' : 'md:w-2/3'} bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-lg shadow-md`}>Confirm Transfer</button>
                      </div>
                   </form>
                </div>
@@ -469,18 +477,20 @@ export default function Home() {
                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
                   <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Admin: List Player</h3>
                   <form onSubmit={listAuction} className="flex flex-col md:flex-row items-end gap-4">
-                     <div className="w-full md:w-1/3">
+                     <div className={`w-full ${isAdmin ? 'md:w-1/2' : 'md:w-1/3'}`}>
                        <label className="text-xs font-bold text-gray-500 mb-1 block">Player Name</label>
                        <input type="text" className="w-full p-2 border rounded-lg outline-none" value={auctionPlayerName} onChange={e => setAuctionPlayerName(e.target.value)} />
                      </div>
-                     <div className="w-full md:w-1/4">
+                     <div className={`w-full ${isAdmin ? 'md:w-1/2' : 'md:w-1/4'}`}>
                        <label className="text-xs font-bold text-gray-500 mb-1 block">Starting Bid (£M)</label>
                        <input type="number" step="0.1" className="w-full p-2 border rounded-lg outline-none" value={auctionStartBid} onChange={e => setAuctionStartBid(e.target.value === '' ? '' : parseFloat(e.target.value))} />
                      </div>
-                     <div className="w-full md:w-1/4">
-                       <label className="text-xs font-bold text-gray-500 mb-1 block">Admin Password</label>
-                       <input type="password" placeholder="••••••••" className="w-full p-2 border rounded-lg outline-none" value={password} onChange={e => setPassword(e.target.value)} />
-                     </div>
+                     {!isAdmin && (
+                       <div className="w-full md:w-1/4">
+                         <label className="text-xs font-bold text-gray-500 mb-1 block">Admin Password</label>
+                         <input type="password" placeholder="••••••••" className="w-full p-2 border rounded-lg outline-none" value={password} onChange={e => setPassword(e.target.value)} />
+                       </div>
+                     )}
                      <button type="submit" className="w-full md:w-auto bg-gray-800 text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-700 transition-colors">List</button>
                   </form>
                </div>
