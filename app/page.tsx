@@ -36,7 +36,7 @@ export default function Home() {
   const [bidInputs, setBidInputs] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    // 1. Start UK Time & Countdown Ticker (Updates every 1 second)
+    // 1. Start UK Time & Countdown Ticker
     const timer = setInterval(() => {
       setUkTime(new Date().toLocaleTimeString('en-GB', { timeZone: 'Europe/London' }));
       setCurrentTime(Date.now());
@@ -61,17 +61,16 @@ export default function Home() {
     }
     
     async function fetchAuctions() {
-      // Filter out 'archived' auctions so they disappear when finished
       const { data } = await supabase.from('auctions').select('*, highest_bidder:highest_bidder_id(name)').neq('status', 'archived').order('created_at', { ascending: false });
       if (data) setAuctions(data);
     }
 
     fetchData();
 
-    // 3. LIVE WebSockets Subscription for eBay Bidding
+    // 3. LIVE WebSockets Subscription
     const channel = supabase.channel('realtime-auctions')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'auctions' }, (payload) => {
-         fetchAuctions(); // Instantly refresh auctions on any change
+         fetchAuctions();
       })
       .subscribe();
 
@@ -83,6 +82,7 @@ export default function Home() {
 
   const currentSeasonMatches = matches.filter(match => match.season_id === selectedSeasonId);
   const currentSeasonTransfers = transfers.filter(transfer => transfer.season_id === selectedSeasonId);
+  const currentSeasonAuctions = auctions.filter(auction => auction.season_id === selectedSeasonId);
 
   // League Table Calculation
   const calculateTable = () => {
@@ -137,16 +137,20 @@ export default function Home() {
     }
   };
 
-  // ==========================================
-  // NEW: Advanced eBay Functions
-  // ==========================================
-  
+  // eBay Functions
   const listAuction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password !== "1") return alert("Incorrect Admin password!");
     if (!auctionPlayerName) return alert("Enter a player name!");
-    // Status 'pending' means it's listed but timer hasn't started
-    await supabase.from('auctions').insert([{ player_name: auctionPlayerName, current_bid: auctionStartBid || 0, status: 'pending' }]);
+    if (!selectedSeasonId) return alert("Ensure a season is selected!");
+    
+    await supabase.from('auctions').insert([{ 
+      season_id: selectedSeasonId,
+      player_name: auctionPlayerName, 
+      current_bid: auctionStartBid || 0, 
+      status: 'pending' 
+    }]);
+    
     setAuctionPlayerName(''); setAuctionStartBid(''); setPassword('');
   };
 
@@ -155,19 +159,16 @@ export default function Home() {
        const promptPass = window.prompt("Admin Password required to start timer:");
        if (promptPass !== "1") return alert("Incorrect password.");
     }
-    // Set timer for exactly 30 seconds from right now
     const endTime = new Date(Date.now() + 30000).toISOString();
     await supabase.from('auctions').update({ status: 'active', end_time: endTime }).eq('id', auctionId);
   };
 
   const placeBid = async (auctionId: string, currentBid: number, currentEndTime: string) => {
-    if (!myManagerId) return alert("Select 'Who is bidding right now?' at the top of the page first!");
+    if (!myManagerId) return alert("Select 'Who is bidding?' at the top of the page first!");
     const bidValue = bidInputs[auctionId];
     if (!bidValue || bidValue <= currentBid) return alert("Bid must be higher than the current bid!");
     
-    // Add exactly 10 seconds to the CURRENT countdown timer
     const newEndTime = new Date(new Date(currentEndTime).getTime() + 10000).toISOString();
-    
     await supabase.from('auctions').update({ current_bid: bidValue, highest_bidder_id: myManagerId, end_time: newEndTime }).eq('id', auctionId);
     setBidInputs({ ...bidInputs, [auctionId]: '' as any });
   };
@@ -183,7 +184,18 @@ export default function Home() {
   if (loading) return <div className="p-10 text-center text-gray-500 font-medium">Loading the pitch...</div>;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-gray-900 p-4 md:p-8 font-sans">
+    <div className="min-h-screen bg-slate-50 text-gray-900 p-4 md:p-8 font-sans overflow-x-hidden">
+      {/* Custom CSS Animation for the 10-second panic mode */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes popInOut {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.03); }
+        }
+        .animate-pop {
+          animation: popInOut 1s ease-in-out infinite;
+        }
+      `}} />
+
       <div className="max-w-5xl mx-auto space-y-6">
         
         <div className="text-center py-6">
@@ -355,7 +367,7 @@ export default function Home() {
 
             {/* Global Bidder Identity */}
             <div className="bg-blue-50 border border-blue-200 p-6 rounded-2xl flex flex-col sm:flex-row items-center justify-center gap-4 shadow-sm">
-               <span className="font-bold text-blue-800">Who is playing right now?</span>
+               <span className="font-bold text-blue-800">Who is bidding?</span>
                <select 
                  className="p-3 bg-white border border-blue-300 text-blue-900 font-bold rounded-lg focus:ring-2 focus:ring-blue-500 outline-none w-64 shadow-sm cursor-pointer"
                  value={myManagerId}
@@ -386,9 +398,9 @@ export default function Home() {
                </form>
             </div>
 
-            {/* Active Auctions Grid */}
+            {/* Active Auctions Grid (Filtered by Season) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {auctions.map(auction => {
+              {currentSeasonAuctions.map(auction => {
                  // Countdown Timer Logic
                  const endTimeMs = auction.end_time ? new Date(auction.end_time).getTime() : 0;
                  const timeLeft = auction.end_time ? Math.max(0, Math.floor((endTimeMs - currentTime) / 1000)) : 0;
@@ -397,10 +409,12 @@ export default function Home() {
                  const isPending = auction.status === 'pending';
                  const isActive = auction.status === 'active' && timeLeft > 0;
                  const isFinished = auction.status === 'active' && auction.end_time && timeLeft === 0;
+                 const isUrgent = isActive && timeLeft <= 10;
 
-                 let cardStyle = "p-6 rounded-2xl border-2 transition-all ";
+                 let cardStyle = "p-6 rounded-2xl border-2 transition-all duration-300 ";
                  if (isPending) cardStyle += "bg-white border-yellow-400 shadow-lg";
-                 else if (isActive) cardStyle += "bg-white border-blue-400 shadow-lg shadow-blue-100";
+                 else if (isActive && !isUrgent) cardStyle += "bg-white border-blue-400 shadow-lg shadow-blue-100";
+                 else if (isUrgent) cardStyle += "bg-red-50 border-red-500 shadow-2xl shadow-red-200 animate-pop";
                  else if (isFinished) cardStyle += "bg-green-50 border-green-500 shadow-lg";
 
                  return (
@@ -410,12 +424,12 @@ export default function Home() {
                     <div className="flex justify-between items-start mb-4">
                        <h3 className="text-3xl font-black text-gray-900">{auction.player_name}</h3>
                        {isPending && <span className="bg-yellow-100 text-yellow-700 text-xs font-black uppercase px-3 py-1 rounded-full border border-yellow-200">Waiting</span>}
-                       {isActive && <span className="bg-red-100 text-red-600 text-xs font-black uppercase px-3 py-1 rounded-full border border-red-200 animate-pulse flex items-center gap-1">LIVE ⏳ {timeLeft}s</span>}
+                       {isActive && <span className={`text-xs font-black uppercase px-3 py-1 rounded-full border ${isUrgent ? 'bg-red-600 text-white border-red-700' : 'bg-red-100 text-red-600 border-red-200 animate-pulse'} flex items-center gap-1`}>LIVE ⏳ {timeLeft}s</span>}
                        {isFinished && <span className="bg-green-100 text-green-700 text-xs font-black uppercase px-3 py-1 rounded-full border border-green-200">SOLD 🎉</span>}
                     </div>
 
                     {/* Price Display */}
-                    <div className={`rounded-xl p-4 border mb-6 flex justify-between items-center ${isFinished ? 'bg-green-100 border-green-200' : 'bg-gray-50 border-gray-100'}`}>
+                    <div className={`rounded-xl p-4 border mb-6 flex justify-between items-center ${isFinished ? 'bg-green-100 border-green-200' : 'bg-white border-gray-100'}`}>
                        <div>
                          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">{isFinished ? 'Winning Bid' : 'Current Highest Bid'}</p>
                          <p className={`text-4xl font-black ${isFinished ? 'text-green-700' : 'text-blue-600'}`}>£{auction.current_bid}M</p>
@@ -465,9 +479,9 @@ export default function Home() {
                  </div>
               )})}
               
-              {auctions.length === 0 && (
+              {currentSeasonAuctions.length === 0 && (
                 <div className="col-span-full text-center py-12 bg-white rounded-2xl border border-dashed border-gray-300">
-                  <p className="text-gray-500 font-bold text-lg">The Auction House is currently empty.</p>
+                  <p className="text-gray-500 font-bold text-lg">The Auction House is currently empty for this season.</p>
                 </div>
               )}
             </div>
