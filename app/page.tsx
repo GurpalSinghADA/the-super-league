@@ -161,7 +161,7 @@ export default function Home() {
   };
 
   const placeBid = async (auctionId: string, currentBid: number, currentEndTime: string) => {
-    if (!myManagerId) return alert("Select 'Who is playing right now?' at the top of the page first!");
+    if (!myManagerId) return alert("Select 'Who is bidding right now?' at the top of the page first!");
     const bidValue = bidInputs[auctionId];
     if (!bidValue || bidValue <= currentBid) return alert("Bid must be higher than the current bid!");
     
