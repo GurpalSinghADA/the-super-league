@@ -2,7 +2,20 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../utils/supabase';
 
+// Personal Passwords Dictionary
+const PASSWORDS: Record<string, string> = {
+  "Rajat": "Apple",
+  "Kola": "Tree",
+  "Gurpal": "Chels"
+};
+
 export default function Home() {
+  // Authentication States
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loginManagerId, setLoginManagerId] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+
+  // Data States
   const [managers, setManagers] = useState<any[]>([]);
   const [matches, setMatches] = useState<any[]>([]);
   const [seasons, setSeasons] = useState<any[]>([]);
@@ -12,27 +25,27 @@ export default function Home() {
   const [votes, setVotes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // App States
   const [activeTab, setActiveTab] = useState<'league' | 'transfers' | 'ebay' | 'awards'>('league');
   const [selectedSeasonId, setSelectedSeasonId] = useState<string>('all');
-  const [myManagerId, setMyManagerId] = useState(''); // Global Identity
-  const [password, setPassword] = useState('');
+  const [myManagerId, setMyManagerId] = useState(''); // Set automatically upon login
+  const [password, setPassword] = useState(''); // For Admin Actions
   
+  // Time States
   const [ukTime, setUkTime] = useState<string>('');
   const [currentTime, setCurrentTime] = useState(Date.now());
 
+  // Form States
   const [homeTeamId, setHomeTeamId] = useState('');
   const [awayTeamId, setAwayTeamId] = useState('');
   const [homeGoals, setHomeGoals] = useState(0);
   const [awayGoals, setAwayGoals] = useState(0);
-
   const [playerName, setPlayerName] = useState('');
   const [acquiringManagerId, setAcquiringManagerId] = useState('');
   const [transferFee, setTransferFee] = useState<number | ''>('');
-
   const [auctionPlayerName, setAuctionPlayerName] = useState('');
   const [auctionStartBid, setAuctionStartBid] = useState<number | ''>('');
   const [bidInputs, setBidInputs] = useState<Record<string, number>>({});
-
   const [nominationName, setNominationName] = useState('');
 
   useEffect(() => {
@@ -52,7 +65,6 @@ export default function Home() {
       if (transferData) setTransfers(transferData);
       if (seasonData && seasonData.length > 0) {
         setSeasons(seasonData);
-        // Defaulting to "all" but users can select specific seasons
       }
       fetchAuctions();
       fetchAwards();
@@ -86,13 +98,29 @@ export default function Home() {
     };
   }, []);
 
-  // Filter Data by Season (Or show all if 'all' is selected)
+  // --- LOGIN FUNCTION ---
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    const selectedManager = managers.find(m => m.id === loginManagerId);
+    
+    if (!selectedManager) return alert("Please select your name!");
+    
+    if (PASSWORDS[selectedManager.name] === loginPassword) {
+      setMyManagerId(loginManagerId); // Lock in their identity
+      setIsAuthenticated(true);       // Let them into the app
+    } else {
+      alert("Incorrect password!");
+    }
+  };
+
+  // Filter Data
   const isTotal = selectedSeasonId === 'all';
   const currentSeasonMatches = isTotal ? matches : matches.filter(match => match.season_id === selectedSeasonId);
   const currentSeasonTransfers = isTotal ? transfers : transfers.filter(transfer => transfer.season_id === selectedSeasonId);
   const currentSeasonAuctions = isTotal ? auctions : auctions.filter(auction => auction.season_id === selectedSeasonId);
   const currentSeasonNominations = isTotal ? nominations : nominations.filter(nom => nom.season_id === selectedSeasonId);
 
+  // Calculations
   const calculateTable = () => {
     let table: Record<string, any> = {};
     managers.forEach(m => { table[m.id] = { id: m.id, name: m.name, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0 }; });
@@ -120,10 +148,11 @@ export default function Home() {
     return { ...m, net };
   });
 
+  // Database Submissions
   const submitMatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isTotal) return alert("Select a specific season to log a match!");
-    if (password !== "1") return alert("Incorrect password!");
+    if (password !== "1") return alert("Incorrect admin password!");
     if (!homeTeamId || !awayTeamId || homeTeamId === awayTeamId) return alert("Select valid teams!");
     const { error } = await supabase.from('matches').insert([{ season_id: selectedSeasonId, home_manager_id: homeTeamId, away_manager_id: awayTeamId, home_goals: homeGoals, away_goals: awayGoals }]);
     if (!error) {
@@ -136,7 +165,7 @@ export default function Home() {
   const submitTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isTotal) return alert("Select a specific season to log a transfer!");
-    if (password !== "1") return alert("Incorrect password!");
+    if (password !== "1") return alert("Incorrect admin password!");
     if (!playerName || !acquiringManagerId || transferFee === '') return alert("Fill all details!");
     const { error } = await supabase.from('transfers').insert([{ season_id: selectedSeasonId, manager_id: acquiringManagerId, player_name: playerName, transfer_fee: transferFee }]);
     if (!error) {
@@ -165,7 +194,6 @@ export default function Home() {
   };
 
   const placeBid = async (auctionId: string, currentBid: number, currentEndTime: string) => {
-    if (!myManagerId) return alert("Select who you are at the top of the page first!");
     const bidValue = bidInputs[auctionId];
     if (!bidValue || bidValue <= currentBid) return alert("Bid must be higher than the current bid!");
     const newEndTime = new Date(new Date(currentEndTime).getTime() + 10000).toISOString();
@@ -181,10 +209,8 @@ export default function Home() {
     await supabase.from('auctions').update({ status: 'archived' }).eq('id', auctionId);
   };
 
-  // Awards Functions
   const submitNomination = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!myManagerId) return alert("Select who you are at the top of the page!");
     if (isTotal) return alert("You must select a specific season to nominate a player!");
     if (!nominationName) return;
 
@@ -196,17 +222,63 @@ export default function Home() {
   };
 
   const castVote = async (nomination: any) => {
-    if (!myManagerId) return alert("Select who you are at the top of the page first!");
     if (nomination.manager_id === myManagerId) return alert("You cannot vote for a player you nominated!");
-    
     const myVoteThisSeason = votes.find(v => v.voter_id === myManagerId && v.season_id === nomination.season_id);
     if (myVoteThisSeason) return alert("You have already cast your 1 vote for this season's awards!");
 
     await supabase.from('award_votes').insert([{ nomination_id: nomination.id, voter_id: myManagerId, season_id: nomination.season_id }]);
   };
 
+  // --- RENDER SCREENS ---
+
   if (loading) return <div className="p-10 text-center text-gray-500 font-medium">Loading the pitch...</div>;
 
+  // 1. THE LOGIN SCREEN
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl border border-gray-200">
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
+              The Super League
+            </h1>
+            <p className="mt-2 text-gray-500 font-medium">Please sign in to continue</p>
+          </div>
+          
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Who are you?</label>
+              <select 
+                className="w-full p-4 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl font-bold focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer shadow-sm"
+                value={loginManagerId}
+                onChange={(e) => setLoginManagerId(e.target.value)}
+              >
+                <option value="">Select Manager...</option>
+                {managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+            
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Password</label>
+              <input 
+                type="password" 
+                placeholder="Enter your personal password"
+                className="w-full p-4 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl font-bold focus:ring-2 focus:ring-blue-500 outline-none shadow-sm"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+              />
+            </div>
+            
+            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl shadow-md transition-all active:scale-95 text-lg">
+              Enter Locker Room
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. THE MAIN APP DASHBOARD
   return (
     <div className="min-h-screen bg-slate-50 text-gray-900 p-4 md:p-8 font-sans overflow-x-hidden">
       <style dangerouslySetInnerHTML={{__html: `@keyframes popInOut { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } } .animate-pop { animation: popInOut 1s ease-in-out infinite; }`}} />
@@ -230,16 +302,15 @@ export default function Home() {
           </div>
           
           <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto justify-end">
-            <div className="flex items-center gap-2">
-               <label className="text-gray-400 uppercase tracking-wide text-xs font-bold whitespace-nowrap">You are:</label>
-               <select className="p-2 bg-blue-50 border border-blue-200 text-blue-900 rounded-lg font-bold text-sm outline-none cursor-pointer" value={myManagerId} onChange={(e) => setMyManagerId(e.target.value)}>
-                 <option value="">Select Identity...</option>
-                 {managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-               </select>
+            {/* Identity Badge (Replaces Dropdown) */}
+            <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-2 rounded-lg">
+               <span className="text-xl">👤</span>
+               <span className="text-blue-900 font-black tracking-wide">{managers.find(m => m.id === myManagerId)?.name}</span>
             </div>
+            
             <div className="flex items-center gap-2">
               <label className="text-gray-400 uppercase tracking-wide text-xs font-bold whitespace-nowrap">Season:</label>
-              <select className="p-2 bg-gray-50 border border-gray-200 text-gray-900 rounded-lg font-bold text-sm outline-none cursor-pointer" value={selectedSeasonId} onChange={(e) => setSelectedSeasonId(e.target.value)}>
+              <select className="p-2 bg-gray-50 border border-gray-200 text-gray-900 rounded-lg font-bold text-sm outline-none cursor-pointer shadow-sm" value={selectedSeasonId} onChange={(e) => setSelectedSeasonId(e.target.value)}>
                 <option value="all">🌍 TOTAL (ALL TIME)</option>
                 {seasons.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
@@ -400,17 +471,17 @@ export default function Home() {
                   <form onSubmit={listAuction} className="flex flex-col md:flex-row items-end gap-4">
                      <div className="w-full md:w-1/3">
                        <label className="text-xs font-bold text-gray-500 mb-1 block">Player Name</label>
-                       <input type="text" className="w-full p-2 border rounded-lg" value={auctionPlayerName} onChange={e => setAuctionPlayerName(e.target.value)} />
+                       <input type="text" className="w-full p-2 border rounded-lg outline-none" value={auctionPlayerName} onChange={e => setAuctionPlayerName(e.target.value)} />
                      </div>
                      <div className="w-full md:w-1/4">
                        <label className="text-xs font-bold text-gray-500 mb-1 block">Starting Bid (£M)</label>
-                       <input type="number" step="0.1" className="w-full p-2 border rounded-lg" value={auctionStartBid} onChange={e => setAuctionStartBid(e.target.value === '' ? '' : parseFloat(e.target.value))} />
+                       <input type="number" step="0.1" className="w-full p-2 border rounded-lg outline-none" value={auctionStartBid} onChange={e => setAuctionStartBid(e.target.value === '' ? '' : parseFloat(e.target.value))} />
                      </div>
                      <div className="w-full md:w-1/4">
-                       <label className="text-xs font-bold text-gray-500 mb-1 block">Password</label>
-                       <input type="password" className="w-full p-2 border rounded-lg" value={password} onChange={e => setPassword(e.target.value)} />
+                       <label className="text-xs font-bold text-gray-500 mb-1 block">Admin Password</label>
+                       <input type="password" placeholder="••••••••" className="w-full p-2 border rounded-lg outline-none" value={password} onChange={e => setPassword(e.target.value)} />
                      </div>
-                     <button type="submit" className="w-full md:w-auto bg-gray-800 text-white px-6 py-2 rounded-lg font-bold">List</button>
+                     <button type="submit" className="w-full md:w-auto bg-gray-800 text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-700 transition-colors">List</button>
                   </form>
                </div>
             ) : (
@@ -436,9 +507,9 @@ export default function Home() {
                  <div key={auction.id} className={cardStyle}>
                     <div className="flex justify-between items-start mb-4">
                        <h3 className="text-3xl font-black text-gray-900">{auction.player_name}</h3>
-                       {isPending && <span className="bg-yellow-100 text-yellow-700 text-xs font-black uppercase px-3 py-1 rounded-full border">Waiting</span>}
-                       {isActive && <span className={`text-xs font-black uppercase px-3 py-1 rounded-full border ${isUrgent ? 'bg-red-600 text-white' : 'bg-red-100 text-red-600'} flex items-center gap-1`}>LIVE ⏳ {timeLeft}s</span>}
-                       {isFinished && <span className="bg-green-100 text-green-700 text-xs font-black uppercase px-3 py-1 rounded-full border">SOLD 🎉</span>}
+                       {isPending && <span className="bg-yellow-100 text-yellow-700 text-xs font-black uppercase px-3 py-1 rounded-full border border-yellow-200">Waiting</span>}
+                       {isActive && <span className={`text-xs font-black uppercase px-3 py-1 rounded-full border ${isUrgent ? 'bg-red-600 text-white border-red-700' : 'bg-red-100 text-red-600 border-red-200 animate-pulse'} flex items-center gap-1`}>LIVE ⏳ {timeLeft}s</span>}
+                       {isFinished && <span className="bg-green-100 text-green-700 text-xs font-black uppercase px-3 py-1 rounded-full border border-green-200">SOLD 🎉</span>}
                     </div>
 
                     <div className={`rounded-xl p-4 border mb-6 flex justify-between items-center ${isFinished ? 'bg-green-100 border-green-200' : 'bg-white border-gray-100'}`}>
@@ -452,14 +523,14 @@ export default function Home() {
                        </div>
                     </div>
 
-                    {isPending && <button onClick={() => startAuctionTimer(auction.id)} className="w-full bg-yellow-400 text-yellow-900 px-6 py-3 rounded-xl font-black">Admin: Start 30s Timer</button>}
+                    {isPending && <button onClick={() => startAuctionTimer(auction.id)} className="w-full bg-yellow-400 text-yellow-900 px-6 py-3 rounded-xl font-black hover:bg-yellow-500 transition-colors">Admin: Start 30s Timer</button>}
                     {isActive && (
                        <div className="flex gap-2">
-                          <input type="number" step="0.1" placeholder={`> ${auction.current_bid}`} className="flex-1 p-3 border-2 rounded-xl font-bold" value={bidInputs[auction.id] || ''} onChange={(e) => setBidInputs({...bidInputs, [auction.id]: parseFloat(e.target.value)})} />
-                          <button onClick={() => placeBid(auction.id, auction.current_bid, auction.end_time)} className="bg-blue-600 text-white px-8 rounded-xl font-black">BID</button>
+                          <input type="number" step="0.1" placeholder={`> ${auction.current_bid}`} className="flex-1 p-3 border-2 border-gray-200 rounded-xl font-bold text-lg outline-none focus:border-blue-500" value={bidInputs[auction.id] || ''} onChange={(e) => setBidInputs({...bidInputs, [auction.id]: parseFloat(e.target.value)})} />
+                          <button onClick={() => placeBid(auction.id, auction.current_bid, auction.end_time)} className="bg-blue-600 text-white px-8 rounded-xl font-black text-lg hover:bg-blue-700 active:scale-95 transition-transform">BID</button>
                        </div>
                     )}
-                    {(isFinished || isPending) && <button onClick={() => archiveAuction(auction.id)} className="w-full mt-4 text-xs font-bold text-gray-400 hover:text-red-500">Admin: Clear / Hide Auction</button>}
+                    {(isFinished || isPending) && <button onClick={() => archiveAuction(auction.id)} className="w-full mt-4 text-xs font-bold text-gray-400 hover:text-red-500 transition-colors uppercase tracking-widest">Admin: Clear / Hide Auction</button>}
                  </div>
               )})}
             </div>
@@ -529,12 +600,6 @@ export default function Home() {
                       </div>
                    </div>
               )})}
-              
-              {currentSeasonNominations.length === 0 && (
-                <div className="col-span-full text-center py-12 bg-white rounded-2xl border border-dashed border-gray-300">
-                  <p className="text-gray-500 font-bold text-lg">No players have been nominated yet.</p>
-                </div>
-              )}
             </div>
           </div>
         )}
