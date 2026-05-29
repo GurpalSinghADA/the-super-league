@@ -106,15 +106,14 @@ export default function Home() {
     if (!selectedManager) return alert("Please select your name!");
     
     if (PASSWORDS[selectedManager.name] === loginPassword) {
-      setMyManagerId(loginManagerId); // Lock in their identity
-      setIsAuthenticated(true);       // Let them into the app
+      setMyManagerId(loginManagerId);
+      setIsAuthenticated(true);      
     } else {
       alert("Incorrect password!");
     }
   };
 
   // --- ADMIN CHECK ---
-  // If the logged-in user is named 'Gurpal', they get automatic admin rights
   const isAdmin = managers.find(m => m.id === myManagerId)?.name === 'Gurpal';
 
   // Filter Data
@@ -231,6 +230,15 @@ export default function Home() {
     if (myVoteThisSeason) return alert("You have already cast your 1 vote for this season's awards!");
 
     await supabase.from('award_votes').insert([{ nomination_id: nomination.id, voter_id: myManagerId, season_id: nomination.season_id }]);
+  };
+
+  // --- NEW: Admin Remove Nomination ---
+  const deleteNomination = async (nominationId: string) => {
+    if (!isAdmin) return;
+    const confirmDelete = window.confirm("Commissioner Action: Are you sure you want to remove this nomination?");
+    if (!confirmDelete) return;
+
+    await supabase.from('award_nominations').delete().eq('id', nominationId);
   };
 
   // --- RENDER SCREENS ---
@@ -593,7 +601,7 @@ export default function Home() {
                          </div>
                       </div>
 
-                      <div className="w-full md:w-1/3 flex justify-end">
+                      <div className="w-full md:w-1/3 flex flex-col items-end justify-center gap-2">
                          {isTotal ? (
                             <span className="text-gray-400 font-bold italic">Voting closed</span>
                          ) : iVotedForThis ? (
@@ -602,10 +610,20 @@ export default function Home() {
                             <button 
                               onClick={() => castVote(nom)} 
                               disabled={isOwnPlayer || hasVotedThisSeason}
-                              className={`px-8 py-3 rounded-xl font-black transition-all ${isOwnPlayer ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : hasVotedThisSeason ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-900 text-white hover:bg-gray-700 active:scale-95'}`}
+                              className={`w-full max-w-[160px] px-8 py-3 rounded-xl font-black transition-all ${isOwnPlayer ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : hasVotedThisSeason ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-900 text-white hover:bg-gray-700 active:scale-95'}`}
                             >
                               {isOwnPlayer ? 'Your Player' : hasVotedThisSeason ? 'Vote Cast' : 'Vote'}
                             </button>
+                         )}
+
+                         {/* Admin Removal Button */}
+                         {isAdmin && (
+                           <button 
+                             onClick={() => deleteNomination(nom.id)}
+                             className="text-xs font-bold text-red-400 hover:text-red-600 uppercase tracking-widest transition-colors mt-2"
+                           >
+                             Admin: Remove
+                           </button>
                          )}
                       </div>
                    </div>
