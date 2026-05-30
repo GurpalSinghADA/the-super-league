@@ -179,6 +179,19 @@ export default function Home() {
     }
   };
 
+  // --- NEW: Admin Remove Transfer ---
+  const deleteTransfer = async (transferId: string) => {
+    if (!isAdmin) return;
+    const confirmDelete = window.confirm("Commissioner Action: Are you sure you want to completely remove this transfer?");
+    if (!confirmDelete) return;
+
+    await supabase.from('transfers').delete().eq('id', transferId);
+    
+    // Refresh transfers list
+    const { data } = await supabase.from('transfers').select('*, manager:manager_id(name)');
+    if (data) setTransfers(data);
+  };
+
   const listAuction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isTotal) return alert("Select a specific season to list a player!");
@@ -458,10 +471,20 @@ export default function Home() {
                       {transfer.transfer_fee < 0 ? 'Signed by ' : 'Sold by '} 
                       <span className="font-bold text-gray-800">{transfer.manager?.name}</span>
                     </div>
-                    <div className="w-full md:w-1/3 text-right">
+                    
+                    {/* Updated Section: Price Tag + Admin Remove Button */}
+                    <div className="w-full md:w-1/3 flex flex-col items-end justify-center gap-2 mt-4 md:mt-0">
                       <span className={`border px-4 py-2 rounded-full font-black tracking-wide ${transfer.transfer_fee >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-600'}`}>
                         {transfer.transfer_fee > 0 ? '+' : ''}£{transfer.transfer_fee}M
                       </span>
+                      {isAdmin && (
+                        <button 
+                          onClick={() => deleteTransfer(transfer.id)}
+                          className="text-xs font-bold text-red-400 hover:text-red-600 uppercase tracking-widest transition-colors mt-1"
+                        >
+                          Admin: Remove
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
