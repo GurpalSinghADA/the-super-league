@@ -315,11 +315,23 @@ export default function Home() {
 
     const seasonManagerPoints: Record<string, number> = {};
     matches.forEach(match => {
-      const sId = match.season_id; const keyHome = `${sId}_${match.home_manager_id}`; const keyAway = `${sId}_${match.away_manager_id}`;
+      const sId = match.season_id; 
+      const keyHome = `${sId}_${match.home_manager_id}`; 
+      const keyAway = `${sId}_${match.away_manager_id}`;
+      
       if (!seasonManagerPoints[keyHome]) seasonManagerPoints[keyHome] = 0;
       if (!seasonManagerPoints[keyAway]) seasonManagerPoints[keyAway] = 0;
-      if (match.home_goals > match.away_goals) seasonManagerPoints[keyHome] += 3; else if (match.home_goals < match.away_goals) seasonManagerPoints[keyAway] += 3; else { seasonManagerPoints[keyHome] += 1; seasonManagerPoints[keyAway] += 1; }
+      
+      if (match.home_goals > match.away_goals) {
+        seasonManagerPoints[keyHome] += 3; 
+      } else if (match.home_goals < match.away_goals) {
+        seasonManagerPoints[keyAway] += 3; 
+      } else { 
+        seasonManagerPoints[keyHome] += 1; 
+        seasonManagerPoints[keyAway] += 1; 
+      }
     });
+
     Object.entries(seasonManagerPoints).forEach(([key, pts]) => {
       if (pts > maxPts) { maxPts = pts; const [sId, mId] = key.split('_'); maxPointsRecord = { managerName: managers.find(x => x.id === mId)?.name, seasonName: seasons.find(x => x.id === sId)?.name, points: pts }; }
     });
@@ -413,20 +425,43 @@ export default function Home() {
   const saveSquadPlayer = async (nameToSave: string) => {
     const finalName = nameToSave.trim();
     if (!finalName) return;
+    
     await supabase.from('lineups').delete().match({ manager_id: myManagerId, position: activeLineupPosition });
-    await supabase.from('lineups').insert([{ manager_id: myManagerId, position: activeLineupPosition, player_name: finalName }]);
+    const { error } = await supabase.from('lineups').insert([{ manager_id: myManagerId, position: activeLineupPosition, player_name: finalName }]);
+    
+    if (error) {
+      alert("Database Error: Could not save player! Make sure you ran the SQL command to create the 'lineups' table in Supabase.");
+    }
+    
+    // Force UI Refresh Instantly
+    const { data } = await supabase.from('lineups').select('*');
+    if (data) setLineups(data);
+    
     setIsLineupModalOpen(false);
     setCustomPlayerName('');
   };
 
   const clearSquadPlayer = async () => {
     await supabase.from('lineups').delete().match({ manager_id: myManagerId, position: activeLineupPosition });
+    
+    // Force UI Refresh Instantly
+    const { data } = await supabase.from('lineups').select('*');
+    if (data) setLineups(data);
+    
     setIsLineupModalOpen(false);
   };
 
   const changeFormation = async (newFormation: string) => {
     await supabase.from('lineups').delete().match({ manager_id: myManagerId, position: 'FORMATION' });
-    await supabase.from('lineups').insert([{ manager_id: myManagerId, position: 'FORMATION', player_name: newFormation }]);
+    const { error } = await supabase.from('lineups').insert([{ manager_id: myManagerId, position: 'FORMATION', player_name: newFormation }]);
+    
+    if (error) {
+      alert("Database Error: Could not change formation! Make sure you ran the SQL command to create the 'lineups' table in Supabase.");
+    }
+
+    // Force UI Refresh Instantly
+    const { data } = await supabase.from('lineups').select('*');
+    if (data) setLineups(data);
   };
 
   const mySignedPlayers = Array.from(new Set(
