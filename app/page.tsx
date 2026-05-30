@@ -10,6 +10,18 @@ const PASSWORDS: Record<string, string> = {
   "Sukhi": "Trueee"
 };
 
+const TABS = [
+  { id: 'league', icon: '⚽', label: 'League' },
+  { id: 'h2h', icon: '⚔️', label: 'H2H' },
+  { id: 'profiles', icon: '🛡️', label: 'Profiles' },
+  { id: 'hof', icon: '🏛️', label: 'HOF' },
+  { id: 'transfers', icon: '🤝', label: 'Transfers' },
+  { id: 'ebay', icon: '🛒', label: 'eBay' },
+  { id: 'awards', icon: '🏆', label: 'Awards' }
+] as const;
+
+type TabType = typeof TABS[number]['id'];
+
 export default function Home() {
   // Authentication States
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -28,7 +40,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   
   // App States
-  const [activeTab, setActiveTab] = useState<'league' | 'transfers' | 'ebay' | 'awards' | 'profiles' | 'h2h' | 'hof'>('league');
+  const [activeTab, setActiveTab] = useState<TabType>('league');
   const [selectedSeasonId, setSelectedSeasonId] = useState<string>('all');
   const [myManagerId, setMyManagerId] = useState(''); 
   const [password, setPassword] = useState(''); 
@@ -196,12 +208,9 @@ export default function Home() {
   const managerProfiles = managers.map(m => {
     const mMatches = currentSeasonMatches.filter(match => match.home_manager_id === m.id || match.away_manager_id === m.id);
     let w=0, d=0, l=0;
-    let maxGd = -999;
-    let minGd = 999;
-    let biggestWin = null;
-    let worstDefeat = null;
-    let cleanSheets = 0;
-    let scoredFive = false;
+    let maxGd = -999; let minGd = 999;
+    let biggestWin = null; let worstDefeat = null;
+    let cleanSheets = 0; let scoredFive = false;
 
     mMatches.forEach(match => {
       const isHome = match.home_manager_id === m.id;
@@ -367,14 +376,13 @@ export default function Home() {
 
   // --- SQUAD BUILDER FUNCTIONS ---
   const handlePositionClick = (managerId: string, pos: string) => {
-    if (managerId !== myManagerId) return; // Can only edit your own squad
+    if (managerId !== myManagerId) return; 
     setActiveLineupPosition(pos);
     setIsLineupModalOpen(true);
   };
 
   const saveSquadPlayer = async (nameToSave: string) => {
     if (!nameToSave) return;
-    // We delete any existing player at this position first to avoid duplicates, then insert
     await supabase.from('lineups').delete().match({ manager_id: myManagerId, position: activeLineupPosition });
     await supabase.from('lineups').insert([{ manager_id: myManagerId, position: activeLineupPosition, player_name: nameToSave }]);
     setIsLineupModalOpen(false);
@@ -386,35 +394,49 @@ export default function Home() {
     setIsLineupModalOpen(false);
   };
 
-  // Get unique signed players for the currently logged-in manager (for the dropdown/list)
   const mySignedPlayers = Array.from(new Set(
     transfers.filter(t => t.manager_id === myManagerId && t.transfer_fee < 0).map(t => t.player_name)
   ));
 
+  // FUT-Style Card Component
   const renderPitchPlayer = (manager: any, pos: string) => {
     const isMine = manager.id === myManagerId;
     const lineupEntry = lineups.find(l => l.manager_id === manager.id && l.position === pos);
     const hasPlayer = !!lineupEntry;
     
+    const cardBg = hasPlayer 
+      ? "bg-gradient-to-br from-yellow-300 via-yellow-500 to-yellow-600 border border-yellow-200" 
+      : "bg-slate-900/60 border border-slate-500 border-dashed backdrop-blur-sm";
+
     return (
       <div 
         onClick={() => handlePositionClick(manager.id, pos)}
-        className={`flex flex-col items-center justify-center w-14 h-16 ${isMine ? 'cursor-pointer hover:scale-110 transition-transform group' : ''}`}
+        className={`relative flex flex-col items-center justify-start w-[50px] h-[72px] sm:w-[60px] sm:h-[84px] ${cardBg} rounded-t-sm rounded-b-lg shadow-xl ${isMine ? 'cursor-pointer hover:scale-110 hover:z-20 transition-transform group' : ''}`}
       >
-        <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center shadow-lg text-xs font-black
-          ${hasPlayer ? 'bg-white border-blue-600 text-blue-900' : 'bg-green-800/60 border-green-400/50 text-white/70'}
-        `}>
-          {hasPlayer ? lineupEntry.player_name.substring(0, 3).toUpperCase() : pos}
+        <div className={`absolute top-0.5 left-1 text-[8px] sm:text-[10px] font-black ${hasPlayer ? 'text-yellow-900' : 'text-slate-400'}`}>
+          {pos}
+        </div>
+        
+        <div className="mt-3 sm:mt-4 w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center">
+          {hasPlayer ? (
+            <span className="text-xl sm:text-2xl drop-shadow-md">👤</span>
+          ) : (
+            <span className="text-slate-500 text-sm font-black">+</span>
+          )}
         </div>
         
         {hasPlayer && (
-          <span className="text-[9px] font-black text-white bg-black/60 px-1.5 py-0.5 rounded mt-1 truncate max-w-[60px] text-center shadow-sm">
-            {lineupEntry.player_name}
-          </span>
+          <div className="absolute bottom-1 w-full text-center px-0.5">
+            <span className="text-[8px] sm:text-[9px] font-black text-yellow-900 leading-tight uppercase truncate block drop-shadow-sm">
+              {lineupEntry.player_name}
+            </span>
+          </div>
         )}
         
         {!hasPlayer && isMine && (
-          <span className="text-[9px] font-bold text-white opacity-0 group-hover:opacity-100 mt-1 transition-opacity bg-blue-600 px-1 rounded">ADD</span>
+          <div className="absolute inset-0 bg-indigo-600/80 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="text-[10px] font-black text-white uppercase tracking-widest">Add</span>
+          </div>
         )}
       </div>
     );
@@ -423,76 +445,82 @@ export default function Home() {
 
   // --- RENDER SCREENS ---
 
-  if (loading) return <div className="p-10 text-center text-gray-500 font-medium">Loading the pitch...</div>;
+  if (loading) return <div className="min-h-screen bg-slate-900 flex items-center justify-center p-10 text-center text-indigo-400 font-bold animate-pulse">Loading the pitch...</div>;
 
+  // 1. THE LOGIN SCREEN (DARK MODE)
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4">
-        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl border border-gray-200">
+      <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center p-4">
+        <div className="max-w-md w-full bg-slate-900 p-8 rounded-3xl shadow-2xl border border-slate-800 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-cyan-400"></div>
           <div className="text-center mb-8">
-            <h1 className="text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">The Super League</h1>
-            <p className="mt-2 text-gray-500 font-medium">Please sign in to continue</p>
+            <h1 className="text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">
+              The Super League
+            </h1>
+            <p className="mt-2 text-slate-400 font-medium">Please sign in to continue</p>
           </div>
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Who are you?</label>
-              <select className="w-full p-4 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl font-bold focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer" value={loginManagerId} onChange={(e) => setLoginManagerId(e.target.value)}>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2 block">Who are you?</label>
+              <select className="w-full p-4 bg-slate-950 border border-slate-800 text-white rounded-xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer shadow-inner" value={loginManagerId} onChange={(e) => setLoginManagerId(e.target.value)}>
                 <option value="">Select Manager...</option>{managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Password</label>
-              <input type="password" placeholder="Enter password" className="w-full p-4 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl font-bold focus:ring-2 focus:ring-blue-500 outline-none" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} />
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2 block">Password</label>
+              <input type="password" placeholder="Enter password" className="w-full p-4 bg-slate-950 border border-slate-800 text-white placeholder-slate-600 rounded-xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none shadow-inner" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} />
             </div>
-            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl shadow-md transition-all active:scale-95 text-lg">Enter Locker Room</button>
+            <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-4 rounded-xl shadow-[0_0_20px_rgba(79,70,229,0.3)] transition-all active:scale-95 text-lg uppercase tracking-wider">
+              Enter Locker Room
+            </button>
           </form>
         </div>
       </div>
     );
   }
 
+  // 2. THE MAIN APP DASHBOARD (DARK MODE + MOBILE NAV)
   return (
-    <div className="min-h-screen bg-slate-50 text-gray-900 font-sans overflow-x-hidden relative">
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans overflow-x-hidden relative pb-24 md:pb-8">
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes popInOut { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } } 
         .animate-pop { animation: popInOut 1s ease-in-out infinite; }
         @keyframes marquee { 0% { transform: translateX(100vw); } 100% { transform: translateX(-100%); } }
         .animate-marquee { animation: marquee 35s linear infinite; display: inline-block; white-space: nowrap; }
+        .custom-scrollbar::-webkit-scrollbar { display: none; } .custom-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}} />
 
-      {/* SQUAD BUILDER MODAL */}
+      {/* SQUAD BUILDER MODAL (DARK) */}
       {isLineupModalOpen && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-           <div className="bg-white rounded-3xl p-6 md:p-8 w-full max-w-md shadow-2xl relative animate-in zoom-in-95 duration-200">
-              <h2 className="text-2xl font-black mb-2 text-gray-900">Assign {activeLineupPosition}</h2>
-              <p className="text-sm font-bold text-gray-500 mb-6">Select a player from your squad or type a name.</p>
+        <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+           <div className="bg-slate-900 rounded-3xl p-6 md:p-8 w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-slate-800 relative animate-in zoom-in-95 duration-200">
+              <h2 className="text-2xl font-black mb-2 text-white">Assign {activeLineupPosition}</h2>
+              <p className="text-sm font-bold text-slate-400 mb-6">Select a player from your squad or type a name.</p>
               
               <div className="space-y-6">
-                 {/* Option 1: Custom Entry */}
                  <div>
-                    <label className="text-xs font-black uppercase text-gray-400 tracking-widest mb-2 block">Custom Input</label>
+                    <label className="text-xs font-black uppercase text-slate-500 tracking-widest mb-2 block">Custom Input</label>
                     <div className="flex gap-2">
                        <input 
                          type="text" 
                          placeholder="Enter player name..." 
-                         className="flex-1 p-3 border-2 border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500 transition-colors"
+                         className="flex-1 p-3 bg-slate-950 border border-slate-700 text-white rounded-xl font-bold outline-none focus:border-indigo-500 transition-colors"
                          value={customPlayerName}
                          onChange={(e) => setCustomPlayerName(e.target.value)}
                        />
-                       <button onClick={() => saveSquadPlayer(customPlayerName)} className="bg-blue-600 text-white px-6 rounded-xl font-black hover:bg-blue-700 transition-colors">SAVE</button>
+                       <button onClick={() => saveSquadPlayer(customPlayerName)} className="bg-indigo-600 text-white px-6 rounded-xl font-black hover:bg-indigo-500 transition-colors shadow-lg">SAVE</button>
                     </div>
                  </div>
 
-                 {/* Option 2: Pre-signed Players */}
                  {mySignedPlayers.length > 0 && (
                    <div>
-                      <label className="text-xs font-black uppercase text-gray-400 tracking-widest mb-3 block border-t pt-4">Your Transfers</label>
+                      <label className="text-xs font-black uppercase text-slate-500 tracking-widest mb-3 block border-t border-slate-800 pt-4">Your Transfers</label>
                       <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-1 custom-scrollbar">
                          {mySignedPlayers.map(pName => (
                             <button 
                               key={pName} 
                               onClick={() => saveSquadPlayer(pName)}
-                              className="bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-600 hover:text-white px-4 py-2 rounded-lg font-bold text-sm transition-colors shadow-sm"
+                              className="bg-slate-800 text-indigo-300 border border-slate-700 hover:bg-indigo-600 hover:text-white px-4 py-2 rounded-lg font-bold text-sm transition-colors shadow-sm"
                             >
                               {pName}
                             </button>
@@ -502,47 +530,52 @@ export default function Home() {
                  )}
               </div>
 
-              <div className="flex justify-between items-center mt-8 pt-4 border-t border-gray-100">
-                 <button onClick={clearSquadPlayer} className="text-sm font-bold text-red-500 hover:text-red-700 transition-colors">Clear Position</button>
-                 <button onClick={() => setIsLineupModalOpen(false)} className="text-sm font-black text-gray-400 hover:text-gray-800 transition-colors uppercase tracking-widest">Cancel</button>
+              <div className="flex justify-between items-center mt-8 pt-4 border-t border-slate-800">
+                 <button onClick={clearSquadPlayer} className="text-sm font-bold text-red-500 hover:text-red-400 transition-colors">Clear Position</button>
+                 <button onClick={() => setIsLineupModalOpen(false)} className="text-sm font-black text-slate-500 hover:text-white transition-colors uppercase tracking-widest">Cancel</button>
               </div>
            </div>
         </div>
       )}
 
-      {/* Breaking News Ticker */}
-      <div className="w-full bg-red-600 text-white overflow-hidden py-2 border-b-4 border-red-700 shadow-md relative z-10 flex items-center">
-        <div className="bg-red-700 font-black px-4 py-2 absolute left-0 z-20 h-full flex items-center shadow-lg">🚨 LATEST</div>
-        <div className="w-full pl-24">
+      {/* Breaking News Ticker (Sky Sports Dark) */}
+      <div className="w-full bg-red-800 text-white overflow-hidden py-2 border-b border-red-900 shadow-md relative z-10 flex items-center">
+        <div className="bg-red-900 font-black px-4 py-2 absolute left-0 z-20 h-full flex items-center shadow-lg uppercase tracking-widest text-sm">🚨 Latest</div>
+        <div className="w-full pl-28">
            <span className="animate-marquee font-bold tracking-wider">{shuffledTicker || "Welcome to The Super League..."}</span>
         </div>
       </div>
 
       <div className="max-w-5xl mx-auto space-y-6 p-4 md:p-8">
         <div className="text-center py-4">
-          <h1 className="text-5xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">The Super League</h1>
-          <p className="mt-2 text-gray-500 font-medium">Official Tracker, Auctions & Awards</p>
-          {isAdmin && <p className="text-xs font-black text-blue-500 uppercase tracking-widest mt-2 border border-blue-200 inline-block px-3 py-1 rounded-full bg-blue-50">Commissioner Access Granted</p>}
+          <h1 className="text-5xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400 drop-shadow-sm">The Super League</h1>
+          <p className="mt-2 text-slate-400 font-medium">Official Tracker, Auctions & Awards</p>
+          {isAdmin && <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mt-3 border border-indigo-500/30 inline-block px-3 py-1 rounded-full bg-indigo-900/20">Commissioner Access</p>}
         </div>
         
-        {/* Nav */}
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="flex bg-gray-100 p-1 rounded-xl w-full md:w-auto overflow-x-auto custom-scrollbar">
-            <button onClick={() => setActiveTab('league')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all ${activeTab === 'league' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>⚽ League</button>
-            <button onClick={() => setActiveTab('h2h')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all ${activeTab === 'h2h' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>⚔️ H2H</button>
-            <button onClick={() => setActiveTab('profiles')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all ${activeTab === 'profiles' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>🛡️ Profiles</button>
-            <button onClick={() => setActiveTab('hof')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all ${activeTab === 'hof' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>🏛️ Hall of Fame</button>
-            <button onClick={() => setActiveTab('transfers')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all ${activeTab === 'transfers' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>🤝 Transfers</button>
-            <button onClick={() => setActiveTab('ebay')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2 ${activeTab === 'ebay' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>🛒 eBay</button>
-            <button onClick={() => setActiveTab('awards')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all ${activeTab === 'awards' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>🏆 Awards</button>
+        {/* Nav & Controls */}
+        <div className="bg-slate-900 p-4 rounded-2xl shadow-xl border border-slate-800 flex flex-col md:flex-row justify-between items-center gap-6">
+          
+          {/* DESKTOP NAV (Hidden on Mobile) */}
+          <div className="hidden md:flex bg-slate-950 p-1.5 rounded-xl w-auto overflow-x-auto border border-slate-800 shadow-inner gap-1">
+            {TABS.map(tab => (
+              <button 
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)} 
+                className={`min-w-[90px] py-2.5 px-3 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2 ${activeTab === tab.id ? 'bg-slate-800 text-indigo-400 shadow-md border border-slate-700' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900'}`}
+              >
+                {tab.icon} {tab.label}
+              </button>
+            ))}
           </div>
+          
           <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto justify-end">
-            <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-2 rounded-lg">
-               <span className="text-xl">👤</span><span className="text-blue-900 font-black tracking-wide">{managers.find(m => m.id === myManagerId)?.name}</span>
+            <div className="flex items-center gap-2 bg-slate-800 border border-slate-700 px-4 py-2 rounded-xl shadow-inner">
+               <span className="text-xl">👤</span><span className="text-white font-black tracking-wide">{managers.find(m => m.id === myManagerId)?.name}</span>
             </div>
             <div className="flex items-center gap-2">
-              <label className="text-gray-400 uppercase tracking-wide text-xs font-bold whitespace-nowrap">Season:</label>
-              <select className="p-2 bg-gray-50 border border-gray-200 text-gray-900 rounded-lg font-bold text-sm outline-none shadow-sm" value={selectedSeasonId} onChange={(e) => setSelectedSeasonId(e.target.value)}>
+              <label className="text-slate-500 uppercase tracking-wide text-xs font-bold whitespace-nowrap">Season:</label>
+              <select className="p-2.5 bg-slate-950 border border-slate-800 text-white rounded-xl font-bold text-sm outline-none shadow-inner focus:border-indigo-500 transition-colors cursor-pointer" value={selectedSeasonId} onChange={(e) => setSelectedSeasonId(e.target.value)}>
                 <option value="all">🌍 TOTAL (ALL TIME)</option>
                 {seasons.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
@@ -553,25 +586,25 @@ export default function Home() {
         {/* ======================= LEAGUE TAB ======================= */}
         {activeTab === 'league' && (
            <div className="space-y-6 animate-in fade-in duration-300">
-             <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-200 overflow-x-auto">
-               <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center gap-2">🏆 {isTotal ? 'All-Time Leaderboard' : 'League Standings'}</h2>
+             <div className="bg-slate-900 p-6 md:p-8 rounded-3xl shadow-xl border border-slate-800 overflow-x-auto">
+               <h2 className="text-2xl font-black mb-6 text-white flex items-center gap-2">🏆 {isTotal ? 'All-Time Leaderboard' : 'League Standings'}</h2>
                <table className="w-full text-left border-collapse">
                  <thead>
-                   <tr className="bg-gray-50 border-y border-gray-200 text-gray-500 text-sm uppercase tracking-wider">
-                     <th className="p-4 font-semibold rounded-tl-lg">Manager</th>
-                     <th className="p-4 font-semibold">P</th><th className="p-4 font-semibold">W</th><th className="p-4 font-semibold">D</th><th className="p-4 font-semibold">L</th>
-                     <th className="p-4 font-semibold">Form</th><th className="p-4 font-semibold">GD</th><th className="p-4 font-bold text-blue-600 rounded-tr-lg">Pts</th>
+                   <tr className="bg-slate-950 border-y border-slate-800 text-slate-500 text-xs uppercase tracking-widest">
+                     <th className="p-4 font-black rounded-tl-lg">Manager</th>
+                     <th className="p-4 font-black">P</th><th className="p-4 font-black">W</th><th className="p-4 font-black">D</th><th className="p-4 font-black">L</th>
+                     <th className="p-4 font-black">Form</th><th className="p-4 font-black">GD</th><th className="p-4 font-black text-indigo-400 rounded-tr-lg">Pts</th>
                    </tr>
                  </thead>
-                 <tbody className="divide-y divide-gray-100">
+                 <tbody className="divide-y divide-slate-800/50">
                    {leagueTable.map((row, index) => (
-                     <tr key={row.id} className="hover:bg-blue-50/50 transition-colors">
-                       <td className="p-4 flex items-center gap-3"><span className="text-gray-400 font-medium text-sm">{index + 1}</span><span className="font-bold text-gray-800">{row.name}</span></td>
-                       <td className="p-4 text-gray-600">{row.p}</td><td className="p-4 text-gray-600">{row.w}</td><td className="p-4 text-gray-600">{row.d}</td><td className="p-4 text-gray-600">{row.l}</td>
-                       <td className="p-4 flex gap-1 items-center h-full min-h-[60px]">
-                         {row.form.length > 0 ? row.form.map((f: string, i: number) => ( <span key={i} className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm ${f === 'W' ? 'bg-green-500' : f === 'D' ? 'bg-gray-400' : 'bg-red-500'}`}>{f}</span> )) : <span className="text-gray-300 font-bold">-</span>}
+                     <tr key={row.id} className="hover:bg-slate-800/50 transition-colors">
+                       <td className="p-4 flex items-center gap-3"><span className="text-slate-600 font-bold text-sm">{index + 1}</span><span className="font-black text-white text-lg">{row.name}</span></td>
+                       <td className="p-4 text-slate-400 font-medium">{row.p}</td><td className="p-4 text-slate-400 font-medium">{row.w}</td><td className="p-4 text-slate-400 font-medium">{row.d}</td><td className="p-4 text-slate-400 font-medium">{row.l}</td>
+                       <td className="p-4 flex gap-1.5 items-center h-full min-h-[60px]">
+                         {row.form.length > 0 ? row.form.map((f: string, i: number) => ( <span key={i} className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-black text-white shadow-sm ${f === 'W' ? 'bg-green-600' : f === 'D' ? 'bg-slate-600' : 'bg-red-600'}`}>{f}</span> )) : <span className="text-slate-600 font-black">-</span>}
                        </td>
-                       <td className="p-4 text-gray-600 font-medium">{row.gd > 0 ? `+${row.gd}` : row.gd}</td><td className="p-4 font-black text-blue-600 text-lg">{row.pts}</td>
+                       <td className="p-4 text-slate-300 font-bold">{row.gd > 0 ? `+${row.gd}` : row.gd}</td><td className="p-4 font-black text-indigo-400 text-xl">{row.pts}</td>
                      </tr>
                    ))}
                  </tbody>
@@ -579,31 +612,31 @@ export default function Home() {
              </div>
  
              {!isTotal && (
-               <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-200">
-                  <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center gap-2">⚽ Log Match Result</h2>
+               <div className="bg-slate-900 p-6 md:p-8 rounded-3xl shadow-xl border border-slate-800">
+                  <h2 className="text-2xl font-black mb-6 text-white flex items-center gap-2">⚽ Log Match Result</h2>
                   <form onSubmit={submitMatch} className="flex flex-col space-y-6">
-                     <div className="flex flex-col md:flex-row justify-between items-center gap-6 bg-gray-50 p-6 rounded-xl border border-gray-100">
+                     <div className="flex flex-col md:flex-row justify-between items-center gap-6 bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-inner">
                         <div className="flex flex-col w-full md:w-2/5">
-                           <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Home Team</label>
-                           <select className="p-3 bg-white border border-gray-300 rounded-lg outline-none" value={homeTeamId} onChange={(e) => setHomeTeamId(e.target.value)}>
+                           <label className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Home Team</label>
+                           <select className="p-3.5 bg-slate-900 border border-slate-700 text-white rounded-xl outline-none focus:border-indigo-500 transition-colors" value={homeTeamId} onChange={(e) => setHomeTeamId(e.target.value)}>
                               <option value="">Select Manager...</option>{managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                            </select>
                         </div>
-                        <div className="flex items-center gap-3 w-full md:w-1/5 justify-center">
-                           <input type="number" min="0" className="w-16 p-3 bg-white border border-gray-300 text-center text-2xl font-black rounded-lg" value={homeGoals} onChange={(e) => setHomeGoals(parseInt(e.target.value) || 0)} />
-                           <span className="font-bold text-gray-400 text-xl">-</span>
-                           <input type="number" min="0" className="w-16 p-3 bg-white border border-gray-300 text-center text-2xl font-black rounded-lg" value={awayGoals} onChange={(e) => setAwayGoals(parseInt(e.target.value) || 0)} />
+                        <div className="flex items-center gap-4 w-full md:w-1/5 justify-center">
+                           <input type="number" min="0" className="w-16 p-3 bg-slate-900 border border-slate-700 text-white text-center text-2xl font-black rounded-xl focus:border-indigo-500 outline-none" value={homeGoals} onChange={(e) => setHomeGoals(parseInt(e.target.value) || 0)} />
+                           <span className="font-black text-slate-600 text-xl">-</span>
+                           <input type="number" min="0" className="w-16 p-3 bg-slate-900 border border-slate-700 text-white text-center text-2xl font-black rounded-xl focus:border-indigo-500 outline-none" value={awayGoals} onChange={(e) => setAwayGoals(parseInt(e.target.value) || 0)} />
                         </div>
                         <div className="flex flex-col w-full md:w-2/5">
-                           <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Away Team</label>
-                           <select className="p-3 bg-white border border-gray-300 rounded-lg outline-none" value={awayTeamId} onChange={(e) => setAwayTeamId(e.target.value)}>
+                           <label className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Away Team</label>
+                           <select className="p-3.5 bg-slate-900 border border-slate-700 text-white rounded-xl outline-none focus:border-indigo-500 transition-colors" value={awayTeamId} onChange={(e) => setAwayTeamId(e.target.value)}>
                               <option value="">Select Manager...</option>{managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                            </select>
                         </div>
                      </div>
                      <div className="flex flex-col md:flex-row gap-4 items-end pt-2">
-                       {!isAdmin && ( <div className="flex flex-col w-full md:w-1/3"><label className="text-xs font-bold text-gray-500 uppercase mb-2">Admin Password</label><input type="password" placeholder="••••••••" className="p-3 border rounded-lg w-full outline-none" value={password} onChange={(e) => setPassword(e.target.value)} /></div> )}
-                       <button type="submit" className={`w-full ${isAdmin ? '' : 'md:w-2/3'} bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-lg shadow-md`}>Submit Final Score</button>
+                       {!isAdmin && ( <div className="flex flex-col w-full md:w-1/3"><label className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Admin Password</label><input type="password" placeholder="••••••••" className="p-3.5 bg-slate-950 border border-slate-700 text-white rounded-xl w-full outline-none focus:border-indigo-500" value={password} onChange={(e) => setPassword(e.target.value)} /></div> )}
+                       <button type="submit" className={`w-full ${isAdmin ? '' : 'md:w-2/3'} bg-indigo-600 hover:bg-indigo-500 text-white font-black py-4 rounded-xl shadow-lg transition-all`}>Submit Final Score</button>
                      </div>
                   </form>
                </div>
@@ -611,7 +644,7 @@ export default function Home() {
            </div>
          )}
 
-        {/* ======================= PROFILES TAB (WITH SQUAD BUILDER) ======================= */}
+        {/* ======================= PROFILES TAB (DARK MODE + FUT CARDS) ======================= */}
         {activeTab === 'profiles' && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -619,96 +652,76 @@ export default function Home() {
                 const isMyProfile = profile.id === myManagerId;
                 
                 return (
-                <div key={profile.id} className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden relative">
-                   <div className="bg-gray-900 h-28 absolute top-0 left-0 right-0 z-0 opacity-5"></div>
+                <div key={profile.id} className="bg-slate-900 rounded-3xl shadow-xl border border-slate-800 overflow-hidden relative">
+                   <div className="bg-slate-950 h-32 absolute top-0 left-0 right-0 z-0 opacity-80 border-b border-slate-800"></div>
                    
                    <div className="p-6 relative z-10">
-                     <div className="flex justify-between items-end mb-8 mt-2">
-                        <div className="flex items-center gap-4">
-                           <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center text-white text-4xl shadow-lg font-black border-4 border-white">
+                     <div className="flex justify-between items-end mb-8 mt-4">
+                        <div className="flex items-center gap-5">
+                           <div className="w-24 h-24 bg-gradient-to-br from-indigo-500 to-cyan-500 rounded-2xl flex items-center justify-center text-white text-5xl shadow-[0_10px_30px_rgba(79,70,229,0.5)] font-black border-4 border-slate-900 relative">
                              {profile.name.charAt(0)}
                            </div>
                            <div>
-                             <h2 className="text-4xl font-black text-gray-900">{profile.name}</h2>
-                             <p className="text-sm font-bold text-gray-400 uppercase tracking-widest mt-1">Club Manager</p>
+                             <h2 className="text-4xl font-black text-white drop-shadow-md">{profile.name}</h2>
+                             <p className="text-xs font-black text-indigo-400 uppercase tracking-widest mt-1">Club Manager</p>
                            </div>
                         </div>
                      </div>
 
-                     <div className="grid grid-cols-3 gap-3 mb-6">
-                        <div className="bg-gray-50 p-4 rounded-2xl border text-center">
-                          <p className="text-3xl font-black text-blue-600">{profile.winPct}%</p>
-                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Win Rate</p>
+                     <div className="grid grid-cols-3 gap-3 mb-8">
+                        <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-center shadow-inner">
+                          <p className="text-3xl font-black text-cyan-400">{profile.winPct}%</p>
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1">Win Rate</p>
                         </div>
-                        <div className="bg-gray-50 p-4 rounded-2xl border text-center">
-                          <p className="text-3xl font-black text-gray-800">{profile.w}</p>
-                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Wins</p>
+                        <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-center shadow-inner">
+                          <p className="text-3xl font-black text-white">{profile.w}</p>
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1">Wins</p>
                         </div>
-                        <div className="bg-gray-50 p-4 rounded-2xl border text-center">
-                          <p className="text-3xl font-black text-gray-800">{profile.p}</p>
-                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Matches</p>
+                        <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-center shadow-inner">
+                          <p className="text-3xl font-black text-white">{profile.p}</p>
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1">Matches</p>
                         </div>
                      </div>
 
-                     {/* THE PITCH / SQUAD BUILDER */}
-                     <div className="mt-8 mb-6 border-t pt-6">
-                        <div className="flex justify-between items-center mb-4">
-                          <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest flex items-center gap-2">
+                     {/* THE PITCH / FUT SQUAD BUILDER */}
+                     <div className="mt-8 mb-8">
+                        <div className="flex justify-between items-center mb-4 px-2">
+                          <h3 className="text-sm font-black text-slate-300 uppercase tracking-widest flex items-center gap-2">
                             <span>📋</span> Starting XI
                           </h3>
-                          {isMyProfile && <span className="text-[10px] font-bold bg-blue-100 text-blue-600 px-2 py-1 rounded uppercase tracking-wider animate-pulse">Tap a position to edit</span>}
+                          {isMyProfile && <span className="text-[10px] font-black bg-indigo-900/40 text-indigo-400 border border-indigo-500/30 px-2 py-1 rounded uppercase tracking-wider animate-pulse">Tap to edit</span>}
                         </div>
 
-                        {/* GREEN PITCH UI */}
-                        <div className="relative w-full aspect-[3/4] max-w-sm mx-auto bg-green-600 rounded-xl border-4 border-white shadow-[inset_0_0_20px_rgba(0,0,0,0.3)] overflow-hidden">
-                           {/* Pitch markings */}
-                           <div className="absolute top-0 left-1/4 right-1/4 h-1/6 border-x-2 border-b-2 border-white/40"></div>
-                           <div className="absolute top-0 left-[35%] right-[35%] h-[8%] border-x-2 border-b-2 border-white/40"></div>
-                           <div className="absolute bottom-0 left-1/4 right-1/4 h-1/6 border-x-2 border-t-2 border-white/40"></div>
-                           <div className="absolute bottom-0 left-[35%] right-[35%] h-[8%] border-x-2 border-t-2 border-white/40"></div>
-                           <div className="absolute top-1/2 left-0 right-0 border-t-2 border-white/40"></div>
-                           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 border-2 border-white/40 rounded-full"></div>
+                        {/* GREEN PITCH UI (DARKER FOR NIGHT MODE) */}
+                        <div className="relative w-full aspect-[3/4] max-w-sm mx-auto bg-emerald-900/80 rounded-xl border-4 border-slate-800 shadow-[inset_0_0_60px_rgba(0,0,0,0.8)] overflow-hidden">
+                           <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 mix-blend-overlay"></div>
+                           <div className="absolute top-0 left-1/4 right-1/4 h-1/6 border-x-2 border-b-2 border-white/20"></div>
+                           <div className="absolute top-0 left-[35%] right-[35%] h-[8%] border-x-2 border-b-2 border-white/20"></div>
+                           <div className="absolute bottom-0 left-1/4 right-1/4 h-1/6 border-x-2 border-t-2 border-white/20"></div>
+                           <div className="absolute bottom-0 left-[35%] right-[35%] h-[8%] border-x-2 border-t-2 border-white/20"></div>
+                           <div className="absolute top-1/2 left-0 right-0 border-t-2 border-white/20"></div>
+                           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 border-2 border-white/20 rounded-full"></div>
 
-                           {/* Players 4-3-3 Grid */}
                            <div className="absolute inset-0 flex flex-col justify-between py-6 z-10">
-                              {/* Attack */}
-                              <div className="flex justify-evenly px-4">
-                                 {renderPitchPlayer(profile, 'LW')}
-                                 {renderPitchPlayer(profile, 'ST')}
-                                 {renderPitchPlayer(profile, 'RW')}
-                              </div>
-                              {/* Midfield */}
-                              <div className="flex justify-evenly px-8">
-                                 {renderPitchPlayer(profile, 'LCM')}
-                                 {renderPitchPlayer(profile, 'CM')}
-                                 {renderPitchPlayer(profile, 'RCM')}
-                              </div>
-                              {/* Defense */}
-                              <div className="flex justify-evenly px-2">
-                                 {renderPitchPlayer(profile, 'LB')}
-                                 {renderPitchPlayer(profile, 'LCB')}
-                                 {renderPitchPlayer(profile, 'RCB')}
-                                 {renderPitchPlayer(profile, 'RB')}
-                              </div>
-                              {/* GK */}
-                              <div className="flex justify-center mt-2">
-                                 {renderPitchPlayer(profile, 'GK')}
-                              </div>
+                              <div className="flex justify-evenly px-4">{renderPitchPlayer(profile, 'LW')}{renderPitchPlayer(profile, 'ST')}{renderPitchPlayer(profile, 'RW')}</div>
+                              <div className="flex justify-evenly px-8">{renderPitchPlayer(profile, 'LCM')}{renderPitchPlayer(profile, 'CM')}{renderPitchPlayer(profile, 'RCM')}</div>
+                              <div className="flex justify-evenly px-2">{renderPitchPlayer(profile, 'LB')}{renderPitchPlayer(profile, 'LCB')}{renderPitchPlayer(profile, 'RCB')}{renderPitchPlayer(profile, 'RB')}</div>
+                              <div className="flex justify-center mt-2">{renderPitchPlayer(profile, 'GK')}</div>
                            </div>
                         </div>
                      </div>
 
                      {/* Achievements Section */}
-                     <div className="border-t pt-6">
-                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Trophy Cabinet</h3>
-                        <div className="flex flex-wrap gap-2">
+                     <div className="border-t border-slate-800 pt-6">
+                        <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Trophy Cabinet</h3>
+                        <div className="flex flex-wrap gap-3">
                           {profile.achievements.length > 0 ? profile.achievements.map((ach: any, i: number) => (
-                             <div key={i} className="flex items-center gap-2 bg-yellow-50 border border-yellow-200 px-3 py-1.5 rounded-lg shadow-sm" title={ach.desc}>
-                                <span className="text-lg">{ach.icon}</span>
-                                <span className="text-xs font-black text-yellow-800 uppercase">{ach.title}</span>
+                             <div key={i} className="flex items-center gap-2 bg-slate-950 border border-yellow-700/50 px-3 py-2 rounded-xl shadow-md" title={ach.desc}>
+                                <span className="text-xl">{ach.icon}</span>
+                                <span className="text-xs font-black text-yellow-500 uppercase tracking-wide">{ach.title}</span>
                              </div>
                           )) : (
-                             <div className="text-xs font-bold text-gray-400 italic">No achievements unlocked yet.</div>
+                             <div className="text-xs font-bold text-slate-600 italic">No achievements unlocked yet.</div>
                           )}
                         </div>
                      </div>
@@ -725,96 +738,96 @@ export default function Home() {
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                {managerBalances.map(mb => (
-                  <div key={mb.id} className="bg-white p-6 rounded-2xl border shadow-sm flex flex-col justify-center items-center text-center">
-                     <h4 className="text-gray-500 font-bold uppercase tracking-wide text-xs mb-2">{mb.name}&apos;s Net</h4>
-                     <p className={`text-2xl lg:text-3xl font-black ${mb.net >= 0 ? 'text-green-500' : 'text-red-500'}`}>{mb.net >= 0 ? '+' : ''}£{mb.net}M</p>
+                  <div key={mb.id} className="bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-xl flex flex-col justify-center items-center text-center">
+                     <h4 className="text-slate-500 font-black uppercase tracking-widest text-[10px] mb-2">{mb.name}&apos;s Net</h4>
+                     <p className={`text-2xl lg:text-3xl font-black ${mb.net >= 0 ? 'text-green-400 drop-shadow-[0_0_10px_rgba(74,222,128,0.4)]' : 'text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.4)]'}`}>{mb.net >= 0 ? '+' : ''}£{mb.net}M</p>
                   </div>
                ))}
             </div>
 
             {!isTotal && (
-               <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-200">
-                  <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center gap-2">📝 Log Transfer</h2>
+               <div className="bg-slate-900 p-6 md:p-8 rounded-3xl shadow-xl border border-slate-800">
+                  <h2 className="text-2xl font-black mb-6 text-white flex items-center gap-2">📝 Log Transfer</h2>
                   <form onSubmit={submitTransfer} className="flex flex-col space-y-6">
-                     <div className="flex flex-col md:flex-row gap-6 bg-gray-50 p-6 rounded-xl border border-gray-100">
+                     <div className="flex flex-col md:flex-row gap-6 bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-inner">
                         <div className="flex flex-col w-full md:w-1/3">
-                           <label className="text-xs font-bold text-gray-500 uppercase mb-2">Player Name</label>
-                           <input type="text" className="p-3 border rounded-lg outline-none" value={playerName} onChange={(e) => setPlayerName(e.target.value)} />
+                           <label className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Player Name</label>
+                           <input type="text" className="p-3.5 bg-slate-900 border border-slate-700 text-white rounded-xl outline-none focus:border-indigo-500" value={playerName} onChange={(e) => setPlayerName(e.target.value)} />
                         </div>
                         <div className="flex flex-col w-full md:w-1/3">
-                           <label className="text-xs font-bold text-gray-500 uppercase mb-2">Manager</label>
-                           <select className="p-3 border rounded-lg outline-none" value={acquiringManagerId} onChange={(e) => setAcquiringManagerId(e.target.value)}>
+                           <label className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Manager</label>
+                           <select className="p-3.5 bg-slate-900 border border-slate-700 text-white rounded-xl outline-none focus:border-indigo-500" value={acquiringManagerId} onChange={(e) => setAcquiringManagerId(e.target.value)}>
                               <option value="">Select Manager...</option>{managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                            </select>
                         </div>
                         <div className="flex flex-col w-full md:w-1/3">
-                           <label className="text-xs font-bold text-gray-500 uppercase mb-2">Fee (Use - for Money Spent)</label>
+                           <label className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Fee (Use - for Money Spent)</label>
                            <div className="relative">
-                             <span className="absolute left-3 top-3 text-gray-400 font-bold">£</span>
-                             <input type="number" step="0.1" className="p-3 pl-8 border rounded-lg w-full outline-none" value={transferFee} onChange={(e) => setTransferFee(e.target.value === '' ? '' : parseFloat(e.target.value))} />
-                             <span className="absolute right-3 top-3 text-gray-400 font-bold">M</span>
+                             <span className="absolute left-4 top-3.5 text-slate-400 font-black">£</span>
+                             <input type="number" step="0.1" className="p-3.5 pl-9 bg-slate-900 border border-slate-700 text-white rounded-xl w-full outline-none focus:border-indigo-500" value={transferFee} onChange={(e) => setTransferFee(e.target.value === '' ? '' : parseFloat(e.target.value))} />
+                             <span className="absolute right-4 top-3.5 text-slate-400 font-black">M</span>
                            </div>
                         </div>
                      </div>
                      <div className="flex flex-col md:flex-row gap-4 items-end pt-2">
-                       {!isAdmin && ( <div className="flex flex-col w-full md:w-1/3"><label className="text-xs font-bold text-gray-500 uppercase mb-2">Admin Password</label><input type="password" placeholder="••••••••" className="p-3 border rounded-lg w-full outline-none" value={password} onChange={(e) => setPassword(e.target.value)} /></div> )}
-                       <button type="submit" className={`w-full ${isAdmin ? '' : 'md:w-2/3'} bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-lg shadow-md`}>Confirm Transfer</button>
+                       {!isAdmin && ( <div className="flex flex-col w-full md:w-1/3"><label className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Admin Password</label><input type="password" placeholder="••••••••" className="p-3.5 bg-slate-950 border border-slate-700 text-white rounded-xl w-full outline-none" value={password} onChange={(e) => setPassword(e.target.value)} /></div> )}
+                       <button type="submit" className={`w-full ${isAdmin ? '' : 'md:w-2/3'} bg-green-600 hover:bg-green-500 text-white font-black py-4 rounded-xl shadow-lg transition-all`}>Confirm Transfer</button>
                      </div>
                   </form>
                </div>
             )}
 
-            <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-200">
+            <div className="bg-slate-900 p-6 md:p-8 rounded-3xl shadow-xl border border-slate-800">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                <h2 className="text-2xl font-bold text-gray-800">🔄 Transfer Activity {isTotal && '(All Time)'}</h2>
+                <h2 className="text-2xl font-black text-white">🔄 Transfer Activity {isTotal && '(All Time)'}</h2>
                 <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                  <select className="p-2.5 bg-gray-50 border border-gray-200 text-gray-900 font-bold rounded-lg text-sm outline-none cursor-pointer w-full sm:w-auto" value={transferManagerFilter} onChange={(e) => setTransferManagerFilter(e.target.value)}><option value="all">👥 All Managers</option>{managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
-                  <select className="p-2.5 bg-gray-50 border border-gray-200 text-gray-900 font-bold rounded-lg text-sm outline-none cursor-pointer w-full sm:w-auto" value={transferTypeFilter} onChange={(e) => setTransferTypeFilter(e.target.value)}><option value="all">💸 All Types</option><option value="in">📥 Signed (Money Out)</option><option value="out">📤 Sold (Money In)</option></select>
+                  <select className="p-3 bg-slate-950 border border-slate-700 text-white font-bold rounded-xl text-sm outline-none cursor-pointer w-full sm:w-auto focus:border-indigo-500" value={transferManagerFilter} onChange={(e) => setTransferManagerFilter(e.target.value)}><option value="all">👥 All Managers</option>{managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
+                  <select className="p-3 bg-slate-950 border border-slate-700 text-white font-bold rounded-xl text-sm outline-none cursor-pointer w-full sm:w-auto focus:border-indigo-500" value={transferTypeFilter} onChange={(e) => setTransferTypeFilter(e.target.value)}><option value="all">💸 All Types</option><option value="in">📥 Signed (Money Out)</option><option value="out">📤 Sold (Money In)</option></select>
                 </div>
               </div>
               <div className="grid gap-4">
                 {displayedTransfers.length > 0 ? (
                   displayedTransfers.slice().reverse().map((transfer) => (
-                    <div key={transfer.id} className="bg-white border border-gray-200 p-4 rounded-xl flex flex-col md:flex-row justify-between items-center shadow-sm hover:border-blue-200 transition-colors">
+                    <div key={transfer.id} className="bg-slate-950 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row justify-between items-center shadow-sm hover:border-indigo-500/50 transition-colors">
                       <div className="flex items-center gap-4 w-full md:w-1/3">
-                        <div className="bg-blue-50 text-blue-600 p-3 rounded-full text-xl border border-blue-100">👤</div>
-                        <span className="font-bold text-gray-800 text-lg">{transfer.player_name}</span>
+                        <div className="bg-indigo-900/30 text-indigo-400 p-3 rounded-full text-xl border border-indigo-500/30">👤</div>
+                        <span className="font-black text-white text-lg">{transfer.player_name}</span>
                       </div>
-                      <div className="flex items-center gap-2 w-full md:w-1/3 justify-center text-gray-500 font-medium my-3 md:my-0">
-                        {transfer.transfer_fee < 0 ? 'Signed by ' : 'Sold by '}<span className="font-bold text-gray-800">{transfer.manager?.name}</span>
+                      <div className="flex items-center gap-2 w-full md:w-1/3 justify-center text-slate-400 font-bold my-4 md:my-0 text-sm uppercase tracking-wider">
+                        {transfer.transfer_fee < 0 ? 'Signed by ' : 'Sold by '}<span className="font-black text-white">{transfer.manager?.name}</span>
                       </div>
                       <div className="w-full md:w-1/3 flex flex-col items-center md:items-end justify-center gap-2">
-                        <span className={`border px-5 py-2 rounded-full font-black tracking-wide ${transfer.transfer_fee >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-600'}`}>
+                        <span className={`border px-5 py-2.5 rounded-full font-black tracking-widest text-sm shadow-inner ${transfer.transfer_fee >= 0 ? 'bg-green-900/30 border-green-500/50 text-green-400' : 'bg-red-900/30 border-red-500/50 text-red-400'}`}>
                           {transfer.transfer_fee > 0 ? '+' : ''}£{transfer.transfer_fee}M
                         </span>
-                        {isAdmin && (<button onClick={() => deleteTransfer(transfer.id)} className="text-xs font-bold text-red-400 hover:text-red-600 uppercase tracking-widest transition-colors">Admin: Remove</button>)}
+                        {isAdmin && (<button onClick={() => deleteTransfer(transfer.id)} className="text-[10px] font-black text-slate-600 hover:text-red-500 uppercase tracking-widest transition-colors mt-1">Admin: Remove</button>)}
                       </div>
                     </div>
                   ))
                 ) : (
-                  <div className="text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-300"><p className="text-gray-500 font-bold text-lg">No transfers found for these filters.</p></div>
+                  <div className="text-center py-12 bg-slate-950 rounded-2xl border border-dashed border-slate-700"><p className="text-slate-500 font-bold text-lg">No transfers found.</p></div>
                 )}
               </div>
             </div>
           </div>
         )}
 
-        {/* Rest of the Tabs (eBay, Awards, HOF, H2H) remain fully intact and operational */}
+        {/* ======================= eBay TAB ======================= */}
         {activeTab === 'ebay' && (
           <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="bg-gray-900 text-white p-6 rounded-2xl shadow-lg flex flex-col md:flex-row justify-between items-center gap-4 relative overflow-hidden">
-               <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
-               <div className="z-10 flex items-center gap-3"><div className="h-4 w-4 bg-red-500 rounded-full animate-pulse"></div><h2 className="text-2xl font-black tracking-widest uppercase">Live Auction House</h2></div>
-               <div className="z-10 font-mono text-xl font-bold bg-gray-800 px-6 py-2 rounded-lg border border-gray-700">UK Time: <span className="text-blue-400">{ukTime}</span></div>
+            <div className="bg-slate-900 border border-slate-800 text-white p-6 rounded-3xl shadow-xl flex flex-col md:flex-row justify-between items-center gap-4 relative overflow-hidden">
+               <div className="absolute inset-0 bg-gradient-to-r from-indigo-900/40 to-slate-900 opacity-50 mix-blend-overlay"></div>
+               <div className="z-10 flex items-center gap-3"><div className="h-4 w-4 bg-red-500 rounded-full animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.8)]"></div><h2 className="text-2xl font-black tracking-widest uppercase">Live Auction House</h2></div>
+               <div className="z-10 font-mono text-xl font-bold bg-slate-950 px-6 py-2.5 rounded-xl border border-slate-700 shadow-inner text-cyan-400">UK: {ukTime}</div>
             </div>
             {!isTotal && (
-               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-                  <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Admin: List Player</h3>
+               <div className="bg-slate-900 p-6 rounded-3xl shadow-xl border border-slate-800">
+                  <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-4">Admin: List Player</h3>
                   <form onSubmit={listAuction} className="flex flex-col md:flex-row items-end gap-4">
-                     <div className={`w-full ${isAdmin ? 'md:w-1/2' : 'md:w-1/3'}`}><label className="text-xs font-bold text-gray-500 mb-1 block">Player Name</label><input type="text" className="w-full p-2 border rounded-lg outline-none" value={auctionPlayerName} onChange={e => setAuctionPlayerName(e.target.value)} /></div>
-                     <div className={`w-full ${isAdmin ? 'md:w-1/2' : 'md:w-1/4'}`}><label className="text-xs font-bold text-gray-500 mb-1 block">Starting Bid (£M)</label><input type="number" step="0.1" className="w-full p-2 border rounded-lg outline-none" value={auctionStartBid} onChange={e => setAuctionStartBid(e.target.value === '' ? '' : parseFloat(e.target.value))} /></div>
-                     {!isAdmin && (<div className="w-full md:w-1/4"><label className="text-xs font-bold text-gray-500 mb-1 block">Admin Password</label><input type="password" placeholder="••••••••" className="w-full p-2 border rounded-lg outline-none" value={password} onChange={e => setPassword(e.target.value)} /></div>)}
-                     <button type="submit" className="w-full md:w-auto bg-gray-800 text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-700 transition-colors">List</button>
+                     <div className={`w-full ${isAdmin ? 'md:w-1/2' : 'md:w-1/3'}`}><label className="text-xs font-black text-slate-500 tracking-widest mb-2 block uppercase">Player Name</label><input type="text" className="w-full p-3.5 bg-slate-950 border border-slate-700 text-white rounded-xl outline-none focus:border-indigo-500" value={auctionPlayerName} onChange={e => setAuctionPlayerName(e.target.value)} /></div>
+                     <div className={`w-full ${isAdmin ? 'md:w-1/2' : 'md:w-1/4'}`}><label className="text-xs font-black text-slate-500 tracking-widest mb-2 block uppercase">Starting Bid (£M)</label><input type="number" step="0.1" className="w-full p-3.5 bg-slate-950 border border-slate-700 text-white rounded-xl outline-none focus:border-indigo-500" value={auctionStartBid} onChange={e => setAuctionStartBid(e.target.value === '' ? '' : parseFloat(e.target.value))} /></div>
+                     {!isAdmin && (<div className="w-full md:w-1/4"><label className="text-xs font-black text-slate-500 tracking-widest mb-2 block uppercase">Password</label><input type="password" placeholder="••••••••" className="w-full p-3.5 bg-slate-950 border border-slate-700 text-white rounded-xl outline-none" value={password} onChange={e => setPassword(e.target.value)} /></div>)}
+                     <button type="submit" className="w-full md:w-auto bg-white text-slate-900 px-8 py-3.5 rounded-xl font-black hover:bg-slate-200 transition-colors">LIST</button>
                   </form>
                </div>
             )}
@@ -826,78 +839,98 @@ export default function Home() {
                  const isActive = auction.status === 'active' && timeLeft > 0;
                  const isFinished = auction.status === 'active' && auction.end_time && timeLeft === 0;
                  const isUrgent = isActive && timeLeft <= 10;
-                 let cardStyle = "p-6 rounded-2xl border-2 transition-all duration-300 ";
-                 if (isPending) cardStyle += "bg-white border-yellow-400 shadow-lg"; else if (isActive && !isUrgent) cardStyle += "bg-white border-blue-400 shadow-lg shadow-blue-100"; else if (isUrgent) cardStyle += "bg-red-50 border-red-500 shadow-2xl shadow-red-200 animate-pop"; else if (isFinished) cardStyle += "bg-green-50 border-green-500 shadow-lg";
+                 
+                 let cardStyle = "p-6 rounded-3xl border-2 transition-all duration-300 relative overflow-hidden ";
+                 if (isPending) cardStyle += "bg-slate-900 border-slate-700"; 
+                 else if (isActive && !isUrgent) cardStyle += "bg-slate-900 border-indigo-500 shadow-[0_0_30px_rgba(79,70,229,0.2)]"; 
+                 else if (isUrgent) cardStyle += "bg-slate-900 border-red-500 shadow-[0_0_40px_rgba(239,68,68,0.3)] animate-pop"; 
+                 else if (isFinished) cardStyle += "bg-slate-900 border-green-500";
 
                  return (
                  <div key={auction.id} className={cardStyle}>
-                    <div className="flex justify-between items-start mb-4"><h3 className="text-3xl font-black text-gray-900">{auction.player_name}</h3>{isPending && <span className="bg-yellow-100 text-yellow-700 text-xs font-black uppercase px-3 py-1 rounded-full border border-yellow-200">Waiting</span>}{isActive && <span className={`text-xs font-black uppercase px-3 py-1 rounded-full border ${isUrgent ? 'bg-red-600 text-white border-red-700' : 'bg-red-100 text-red-600 border-red-200 animate-pulse'} flex items-center gap-1`}>LIVE ⏳ {timeLeft}s</span>}{isFinished && <span className="bg-green-100 text-green-700 text-xs font-black uppercase px-3 py-1 rounded-full border border-green-200">SOLD 🎉</span>}</div>
-                    <div className={`rounded-xl p-4 border mb-6 flex justify-between items-center ${isFinished ? 'bg-green-100 border-green-200' : 'bg-white border-gray-100'}`}><div><p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">{isFinished ? 'Winning Bid' : 'Current Highest Bid'}</p><p className={`text-4xl font-black ${isFinished ? 'text-green-700' : 'text-blue-600'}`}>£{auction.current_bid}M</p></div><div className="text-right"><p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">{isFinished ? 'Won By' : 'Held By'}</p><p className="text-lg font-bold text-gray-800">{auction.highest_bidder?.name || 'No bids yet'}</p></div></div>
-                    {isPending && <button onClick={() => startAuctionTimer(auction.id)} className="w-full bg-yellow-400 text-yellow-900 px-6 py-3 rounded-xl font-black hover:bg-yellow-500 transition-colors">Admin: Start 30s Timer</button>}
-                    {isActive && (<div className="flex gap-2"><input type="number" step="0.1" placeholder={`> ${auction.current_bid}`} className="flex-1 p-3 border-2 border-gray-200 rounded-xl font-bold text-lg outline-none focus:border-blue-500" value={bidInputs[auction.id] || ''} onChange={(e) => setBidInputs({...bidInputs, [auction.id]: parseFloat(e.target.value)})} /><button onClick={() => placeBid(auction.id, auction.current_bid, auction.end_time)} className="bg-blue-600 text-white px-8 rounded-xl font-black text-lg hover:bg-blue-700 active:scale-95 transition-transform">BID</button></div>)}
-                    {(isFinished || isPending) && <button onClick={() => archiveAuction(auction.id)} className="w-full mt-4 text-xs font-bold text-gray-400 hover:text-red-500 transition-colors uppercase tracking-widest">Admin: Clear / Hide Auction</button>}
+                    <div className="flex justify-between items-start mb-6">
+                       <h3 className="text-3xl font-black text-white">{auction.player_name}</h3>
+                       {isPending && <span className="bg-slate-800 text-slate-400 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border border-slate-600">Waiting</span>}
+                       {isActive && <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border ${isUrgent ? 'bg-red-600 text-white border-red-500' : 'bg-indigo-900/50 text-indigo-400 border-indigo-500/50 animate-pulse'} flex items-center gap-1`}>LIVE ⏳ {timeLeft}s</span>}
+                       {isFinished && <span className="bg-green-900/50 text-green-400 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border border-green-500/50">SOLD 🎉</span>}
+                    </div>
+                    <div className={`rounded-2xl p-5 border mb-6 flex justify-between items-center shadow-inner ${isFinished ? 'bg-green-950/30 border-green-900/50' : 'bg-slate-950 border-slate-800'}`}>
+                       <div><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">{isFinished ? 'Winning Bid' : 'Current Highest Bid'}</p><p className={`text-4xl font-black ${isFinished ? 'text-green-400' : 'text-indigo-400'}`}>£{auction.current_bid}M</p></div>
+                       <div className="text-right"><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">{isFinished ? 'Won By' : 'Held By'}</p><p className="text-lg font-black text-white">{auction.highest_bidder?.name || 'No bids yet'}</p></div>
+                    </div>
+                    {isPending && <button onClick={() => startAuctionTimer(auction.id)} className="w-full bg-slate-800 text-white px-6 py-4 rounded-xl font-black hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm border border-slate-700">Admin: Start 30s Timer</button>}
+                    {isActive && (<div className="flex gap-3"><input type="number" step="0.1" placeholder={`> ${auction.current_bid}`} className="flex-1 p-3.5 bg-slate-950 border-2 border-slate-700 text-white rounded-xl font-black text-lg outline-none focus:border-indigo-500" value={bidInputs[auction.id] || ''} onChange={(e) => setBidInputs({...bidInputs, [auction.id]: parseFloat(e.target.value)})} /><button onClick={() => placeBid(auction.id, auction.current_bid, auction.end_time)} className="bg-indigo-600 text-white px-10 rounded-xl font-black text-lg hover:bg-indigo-500 active:scale-95 transition-transform shadow-lg">BID</button></div>)}
+                    {(isFinished || isPending) && <button onClick={() => archiveAuction(auction.id)} className="w-full mt-6 text-[10px] font-black text-slate-600 hover:text-red-500 transition-colors uppercase tracking-widest">Admin: Clear / Hide Auction</button>}
                  </div>
               )})}
             </div>
           </div>
         )}
 
+        {/* ======================= HALL OF FAME TAB ======================= */}
         {activeTab === 'hof' && (
           <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="bg-yellow-50 border-2 border-yellow-400 text-yellow-900 p-6 rounded-2xl shadow-sm text-center">
-               <h2 className="text-4xl font-black tracking-wider uppercase mb-2">🏛️ The Hall of Fame</h2>
-               <p className="font-bold opacity-80">Permanent records from across all seasons of The Super League.</p>
+            <div className="bg-slate-900 border border-slate-800 text-white p-8 rounded-3xl shadow-xl text-center relative overflow-hidden">
+               <div className="absolute inset-0 bg-gradient-to-b from-yellow-900/20 to-transparent"></div>
+               <h2 className="text-4xl font-black tracking-widest uppercase mb-3 text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-600 relative z-10">🏛️ The Hall of Fame</h2>
+               <p className="font-bold text-slate-400 relative z-10">Permanent records from across all seasons.</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white border-2 border-gray-100 rounded-3xl p-6 shadow-md hover:shadow-lg transition-shadow relative overflow-hidden group">
-                <div className="absolute -right-10 -top-10 text-9xl opacity-5 group-hover:scale-110 transition-transform">💰</div><h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Most Expensive Transfer</h3>
-                {hof.mostExpensiveTransfer ? (<><p className="text-3xl font-black text-gray-900 mb-2">{hof.mostExpensiveTransfer.player_name}</p><p className="text-4xl font-black text-blue-600 mb-4">£{hof.mostExpensiveTransfer.absFee}M</p><div className="bg-gray-50 p-3 rounded-xl border flex justify-between items-center"><span className="font-bold text-gray-600">{hof.mostExpensiveTransfer.manager?.name}</span><span className="text-xs font-bold text-gray-400 uppercase">{hof.mostExpensiveTransfer.seasonName}</span></div></>) : (<p className="text-gray-400 font-bold py-8">No transfers logged yet.</p>)}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-xl relative overflow-hidden group">
+                <div className="absolute -right-10 -top-10 text-9xl opacity-5 grayscale group-hover:scale-110 transition-transform duration-500">💰</div><h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Most Expensive Transfer</h3>
+                {hof.mostExpensiveTransfer ? (<><p className="text-4xl font-black text-white mb-2">{hof.mostExpensiveTransfer.player_name}</p><p className="text-5xl font-black text-cyan-400 mb-6 drop-shadow-md">£{hof.mostExpensiveTransfer.absFee}M</p><div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex justify-between items-center shadow-inner"><span className="font-black text-slate-300">{hof.mostExpensiveTransfer.manager?.name}</span><span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{hof.mostExpensiveTransfer.seasonName}</span></div></>) : (<p className="text-slate-600 font-bold py-8">No transfers logged yet.</p>)}
               </div>
-              <div className="bg-white border-2 border-gray-100 rounded-3xl p-6 shadow-md hover:shadow-lg transition-shadow relative overflow-hidden group">
-                <div className="absolute -right-10 -top-10 text-9xl opacity-5 group-hover:scale-110 transition-transform">👑</div><h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">The Invincible Season</h3>
-                {hof.maxPointsRecord && hof.maxPointsRecord.points > 0 ? (<><p className="text-3xl font-black text-gray-900 mb-2">{hof.maxPointsRecord.managerName}</p><p className="text-4xl font-black text-yellow-500 mb-4">{hof.maxPointsRecord.points} PTS</p><div className="bg-gray-50 p-3 rounded-xl border flex justify-center items-center"><span className="text-xs font-bold text-gray-500 uppercase tracking-widest">{hof.maxPointsRecord.seasonName}</span></div></>) : (<p className="text-gray-400 font-bold py-8">No completed matches yet.</p>)}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-xl relative overflow-hidden group">
+                <div className="absolute -right-10 -top-10 text-9xl opacity-5 grayscale group-hover:scale-110 transition-transform duration-500">👑</div><h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">The Invincible Season</h3>
+                {hof.maxPointsRecord && hof.maxPointsRecord.points > 0 ? (<><p className="text-4xl font-black text-white mb-2">{hof.maxPointsRecord.managerName}</p><p className="text-5xl font-black text-yellow-500 mb-6 drop-shadow-md">{hof.maxPointsRecord.points} PTS</p><div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex justify-center items-center shadow-inner"><span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{hof.maxPointsRecord.seasonName}</span></div></>) : (<p className="text-slate-600 font-bold py-8">No completed matches yet.</p>)}
               </div>
-              <div className="bg-white border-2 border-gray-100 rounded-3xl p-6 shadow-md hover:shadow-lg transition-shadow relative overflow-hidden group">
-                <div className="absolute -right-10 -top-10 text-9xl opacity-5 group-hover:scale-110 transition-transform">🥊</div><h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Biggest Demolition</h3>
-                {hof.biggestDemolition ? (<><div className="flex justify-between items-center my-4"><p className={`text-xl font-bold ${hof.biggestDemolition.home_goals > hof.biggestDemolition.away_goals ? 'text-gray-900' : 'text-gray-400'}`}>{hof.biggestDemolition.home?.name}</p><p className="text-3xl font-black text-red-500 bg-red-50 px-4 py-1 rounded-xl border border-red-100">{hof.biggestDemolition.home_goals} - {hof.biggestDemolition.away_goals}</p><p className={`text-xl font-bold ${hof.biggestDemolition.away_goals > hof.biggestDemolition.home_goals ? 'text-gray-900' : 'text-gray-400'}`}>{hof.biggestDemolition.away?.name}</p></div><div className="bg-gray-50 p-3 rounded-xl border flex justify-center items-center mt-2"><span className="text-xs font-bold text-gray-400 uppercase">{hof.biggestDemolition.seasonName}</span></div></>) : (<p className="text-gray-400 font-bold py-8">No matches logged yet.</p>)}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-xl relative overflow-hidden group">
+                <div className="absolute -right-10 -top-10 text-9xl opacity-5 grayscale group-hover:scale-110 transition-transform duration-500">🥊</div><h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Biggest Demolition</h3>
+                {hof.biggestDemolition ? (<><div className="flex justify-between items-center my-6"><p className={`text-2xl font-black ${hof.biggestDemolition.home_goals > hof.biggestDemolition.away_goals ? 'text-white' : 'text-slate-600'}`}>{hof.biggestDemolition.home?.name}</p><p className="text-4xl font-black text-red-500 bg-slate-950 px-5 py-2 rounded-2xl border border-red-900/50 shadow-inner">{hof.biggestDemolition.home_goals} - {hof.biggestDemolition.away_goals}</p><p className={`text-2xl font-black ${hof.biggestDemolition.away_goals > hof.biggestDemolition.home_goals ? 'text-white' : 'text-slate-600'}`}>{hof.biggestDemolition.away?.name}</p></div><div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex justify-center items-center mt-4 shadow-inner"><span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{hof.biggestDemolition.seasonName}</span></div></>) : (<p className="text-slate-600 font-bold py-8">No matches logged yet.</p>)}
               </div>
-              <div className="bg-white border-2 border-gray-100 rounded-3xl p-6 shadow-md hover:shadow-lg transition-shadow relative overflow-hidden group">
-                <div className="absolute -right-10 -top-10 text-9xl opacity-5 group-hover:scale-110 transition-transform">🎇</div><h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Highest Scoring Match</h3>
-                {hof.highestScoringGame ? (<><div className="flex justify-between items-center my-4"><p className="text-xl font-bold text-gray-800">{hof.highestScoringGame.home?.name}</p><div className="text-center"><p className="text-3xl font-black text-indigo-600 bg-indigo-50 px-4 py-1 rounded-xl border border-indigo-100 mb-1">{hof.highestScoringGame.home_goals} - {hof.highestScoringGame.away_goals}</p><p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{hof.highestScoringGame.totalGoals} Goals</p></div><p className="text-xl font-bold text-gray-800">{hof.highestScoringGame.away?.name}</p></div><div className="bg-gray-50 p-3 rounded-xl border flex justify-center items-center mt-2"><span className="text-xs font-bold text-gray-400 uppercase">{hof.highestScoringGame.seasonName}</span></div></>) : (<p className="text-gray-400 font-bold py-8">No matches logged yet.</p>)}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-xl relative overflow-hidden group">
+                <div className="absolute -right-10 -top-10 text-9xl opacity-5 grayscale group-hover:scale-110 transition-transform duration-500">🎇</div><h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Highest Scoring Match</h3>
+                {hof.highestScoringGame ? (<><div className="flex justify-between items-center my-6"><p className="text-2xl font-black text-white">{hof.highestScoringGame.home?.name}</p><div className="text-center"><p className="text-4xl font-black text-indigo-400 bg-slate-950 px-5 py-2 rounded-2xl border border-indigo-900/50 shadow-inner mb-2">{hof.highestScoringGame.home_goals} - {hof.highestScoringGame.away_goals}</p><p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">{hof.highestScoringGame.totalGoals} Goals</p></div><p className="text-2xl font-black text-white">{hof.highestScoringGame.away?.name}</p></div><div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex justify-center items-center mt-4 shadow-inner"><span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{hof.highestScoringGame.seasonName}</span></div></>) : (<p className="text-slate-600 font-bold py-8">No matches logged yet.</p>)}
               </div>
             </div>
           </div>
         )}
 
+        {/* ======================= H2H TAB ======================= */}
         {activeTab === 'h2h' && (
           <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-200">
-               <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center gap-2">⚔️ Head-to-Head Records {isTotal && '(All-Time)'}</h2>
-               <div className="flex flex-col md:flex-row justify-center items-center gap-6 mb-10">
-                  <select className="p-4 bg-gray-50 border-2 border-gray-200 text-gray-900 rounded-xl font-black text-xl outline-none cursor-pointer w-full md:w-1/3 text-center focus:border-blue-500 transition-colors" value={h2hManagerA} onChange={(e) => setH2hManagerA(e.target.value)}><option value="">Select Manager</option>{managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
-                  <div className="text-3xl font-black text-gray-300 italic">VS</div>
-                  <select className="p-4 bg-gray-50 border-2 border-gray-200 text-gray-900 rounded-xl font-black text-xl outline-none cursor-pointer w-full md:w-1/3 text-center focus:border-blue-500 transition-colors" value={h2hManagerB} onChange={(e) => setH2hManagerB(e.target.value)}><option value="">Select Manager</option>{managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
+            <div className="bg-slate-900 p-6 md:p-8 rounded-3xl shadow-xl border border-slate-800">
+               <h2 className="text-2xl font-black mb-8 text-white flex items-center gap-2">⚔️ Head-to-Head Records</h2>
+               <div className="flex flex-col md:flex-row justify-center items-center gap-6 mb-12">
+                  <select className="p-4 bg-slate-950 border border-slate-700 text-white rounded-2xl font-black text-xl outline-none cursor-pointer w-full md:w-1/3 text-center focus:border-indigo-500 transition-colors shadow-inner" value={h2hManagerA} onChange={(e) => setH2hManagerA(e.target.value)}><option value="">Select Manager</option>{managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
+                  <div className="text-3xl font-black text-slate-700 italic">VS</div>
+                  <select className="p-4 bg-slate-950 border border-slate-700 text-white rounded-2xl font-black text-xl outline-none cursor-pointer w-full md:w-1/3 text-center focus:border-indigo-500 transition-colors shadow-inner" value={h2hManagerB} onChange={(e) => setH2hManagerB(e.target.value)}><option value="">Select Manager</option>{managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
                </div>
                {h2hManagerA && h2hManagerB && h2hManagerA !== h2hManagerB ? (
-                 <div className="space-y-8 animate-in slide-in-from-bottom-4">
-                   <div className="grid grid-cols-3 gap-4 text-center items-center bg-gray-900 text-white rounded-2xl p-6 shadow-lg"><div><p className="text-4xl font-black">{h2hStats.aWins}</p><p className="text-xs uppercase tracking-widest text-gray-400 mt-1">Wins</p></div><div className="border-x border-gray-700"><p className="text-4xl font-black text-gray-400">{h2hStats.d}</p><p className="text-xs uppercase tracking-widest text-gray-500 mt-1">Draws</p></div><div><p className="text-4xl font-black">{h2hStats.bWins}</p><p className="text-xs uppercase tracking-widest text-gray-400 mt-1">Wins</p></div></div>
-                   <div className="flex justify-between items-center px-4"><div className="text-center"><p className="text-2xl font-bold text-gray-800">{h2hStats.aGoals}</p><p className="text-xs uppercase tracking-widest text-gray-500 font-bold">Goals Scored</p></div><div className="text-center"><p className="text-xs font-black uppercase tracking-widest bg-blue-100 text-blue-600 px-3 py-1 rounded-full">{h2hStats.p} Matches Played</p></div><div className="text-center"><p className="text-2xl font-bold text-gray-800">{h2hStats.bGoals}</p><p className="text-xs uppercase tracking-widest text-gray-500 font-bold">Goals Scored</p></div></div>
-                   {h2hStats.matches.length > 0 && ( <div className="mt-8 border-t pt-8"><h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Match History (Recent First)</h3><div className="grid gap-3">{h2hStats.matches.map(m => ( <div key={m.id} className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex justify-between items-center"><span className={`w-1/3 text-right font-bold ${m.home_goals > m.away_goals ? 'text-gray-900' : 'text-gray-400'}`}>{m.home?.name}</span><span className="w-1/3 text-center font-black bg-white py-1 px-4 rounded-lg border shadow-sm">{m.home_goals} - {m.away_goals}</span><span className={`w-1/3 text-left font-bold ${m.away_goals > m.home_goals ? 'text-gray-900' : 'text-gray-400'}`}>{m.away?.name}</span></div> ))}</div></div> )}
+                 <div className="space-y-10 animate-in slide-in-from-bottom-4">
+                   <div className="grid grid-cols-3 gap-4 text-center items-center bg-slate-950 border border-slate-800 text-white rounded-3xl p-8 shadow-inner"><div><p className="text-5xl font-black text-cyan-400">{h2hStats.aWins}</p><p className="text-[10px] uppercase tracking-widest text-slate-500 mt-2 font-black">Wins</p></div><div className="border-x border-slate-800"><p className="text-5xl font-black text-slate-600">{h2hStats.d}</p><p className="text-[10px] uppercase tracking-widest text-slate-500 mt-2 font-black">Draws</p></div><div><p className="text-5xl font-black text-cyan-400">{h2hStats.bWins}</p><p className="text-[10px] uppercase tracking-widest text-slate-500 mt-2 font-black">Wins</p></div></div>
+                   <div className="flex justify-between items-center px-4"><div className="text-center"><p className="text-3xl font-black text-white">{h2hStats.aGoals}</p><p className="text-[10px] uppercase tracking-widest text-slate-500 font-black">Goals</p></div><div className="text-center"><p className="text-[10px] font-black uppercase tracking-widest bg-indigo-900/40 border border-indigo-500/30 text-indigo-400 px-4 py-1.5 rounded-full">{h2hStats.p} Matches Played</p></div><div className="text-center"><p className="text-3xl font-black text-white">{h2hStats.bGoals}</p><p className="text-[10px] uppercase tracking-widest text-slate-500 font-black">Goals</p></div></div>
+                   {h2hStats.matches.length > 0 && ( <div className="mt-8 border-t border-slate-800 pt-8"><h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6">Match History (Recent First)</h3><div className="grid gap-4">{h2hStats.matches.map(m => ( <div key={m.id} className="bg-slate-950 p-5 rounded-2xl border border-slate-800 flex justify-between items-center shadow-inner"><span className={`w-1/3 text-right font-black text-lg ${m.home_goals > m.away_goals ? 'text-white' : 'text-slate-600'}`}>{m.home?.name}</span><span className="w-1/3 text-center font-black bg-slate-900 py-1.5 px-4 rounded-xl border border-slate-700 text-indigo-400">{m.home_goals} - {m.away_goals}</span><span className={`w-1/3 text-left font-black text-lg ${m.away_goals > m.home_goals ? 'text-white' : 'text-slate-600'}`}>{m.away?.name}</span></div> ))}</div></div> )}
                  </div>
-               ) : h2hManagerA === h2hManagerB && h2hManagerA !== '' ? (<div className="text-center text-red-500 font-bold py-10">You cannot select the same manager twice.</div>) : (<div className="text-center text-gray-400 font-bold py-10 border-2 border-dashed rounded-xl">Select two managers above to view their history.</div>)}
+               ) : h2hManagerA === h2hManagerB && h2hManagerA !== '' ? (<div className="text-center text-red-500 font-bold py-10">You cannot select the same manager twice.</div>) : (<div className="text-center text-slate-600 font-bold py-12 border-2 border-dashed border-slate-800 rounded-3xl">Select two managers above to view their history.</div>)}
             </div>
           </div>
         )}
 
+        {/* ======================= AWARDS TAB ======================= */}
         {activeTab === 'awards' && (
           <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="bg-yellow-50 border-2 border-yellow-400 text-yellow-900 p-6 rounded-2xl shadow-sm text-center"><h2 className="text-3xl font-black tracking-wider uppercase mb-2">🏆 Award Nominations</h2><p className="font-bold opacity-80">Each manager can nominate 2 players. You can cast ONE vote for another team&apos;s player.</p></div>
+            <div className="bg-slate-900 border border-yellow-700/50 p-8 rounded-3xl shadow-xl text-center relative overflow-hidden">
+               <div className="absolute inset-0 bg-gradient-to-br from-yellow-900/20 to-transparent"></div>
+               <h2 className="text-3xl font-black tracking-widest uppercase mb-2 text-yellow-500 relative z-10">🏆 Nominations</h2>
+               <p className="font-bold text-slate-400 text-sm relative z-10">Nominate 2 players. Cast 1 vote for another team.</p>
+            </div>
             {!isTotal && (
-               <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-200">
-                  <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Nominate a Player</h3>
+               <div className="bg-slate-900 p-6 md:p-8 rounded-3xl shadow-xl border border-slate-800">
+                  <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Nominate a Player</h3>
                   <form onSubmit={submitNomination} className="flex flex-col md:flex-row items-end gap-4">
-                     <div className="w-full md:w-3/4"><label className="text-xs font-bold text-gray-500 mb-1 block">Player Name</label><input type="text" placeholder="Who deserves the award?" className="w-full p-3 border-2 border-gray-200 focus:border-yellow-400 rounded-lg outline-none font-bold" value={nominationName} onChange={e => setNominationName(e.target.value)} /></div>
-                     <button type="submit" className="w-full md:w-1/4 bg-yellow-400 hover:bg-yellow-500 text-yellow-900 px-6 py-3 rounded-lg font-black transition-colors">Nominate</button>
+                     <div className="w-full md:w-3/4"><label className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2 block">Player Name</label><input type="text" placeholder="Who deserves the award?" className="w-full p-3.5 bg-slate-950 border border-slate-700 focus:border-yellow-500 rounded-xl outline-none font-bold text-white transition-colors" value={nominationName} onChange={e => setNominationName(e.target.value)} /></div>
+                     <button type="submit" className="w-full md:w-1/4 bg-yellow-600 hover:bg-yellow-500 text-slate-900 px-6 py-4 rounded-xl font-black transition-colors shadow-lg">NOMINATE</button>
                   </form>
                </div>
             )}
@@ -907,12 +940,12 @@ export default function Home() {
                    const isOwnPlayer = nom.manager_id === myManagerId;
                    const iVotedForThis = votes.some(v => v.nomination_id === nom.id && v.voter_id === myManagerId);
                    return (
-                   <div key={nom.id} className="bg-white border border-gray-100 p-6 rounded-2xl flex flex-col md:flex-row justify-between items-center shadow-sm">
-                      <div className="w-full md:w-1/3"><h3 className="text-2xl font-black text-gray-900">{nom.player_name}</h3><p className="text-gray-500 font-bold text-sm mt-1">Nominated by {nom.manager?.name}</p></div>
-                      <div className="w-full md:w-1/3 flex justify-center my-4 md:my-0"><div className="bg-yellow-50 border border-yellow-200 px-6 py-3 rounded-full flex items-center gap-3"><span className="text-xl">⭐️</span><span className="text-2xl font-black text-yellow-700">{nom.voteCount}</span></div></div>
-                      <div className="w-full md:w-1/3 flex flex-col items-end justify-center gap-2">
-                         {isTotal ? (<span className="text-gray-400 font-bold italic">Voting closed</span>) : iVotedForThis ? (<span className="bg-green-100 text-green-700 px-6 py-3 rounded-xl font-black flex items-center gap-2 border border-green-300">✅ Voted</span>) : (<button onClick={() => castVote(nom)} disabled={isOwnPlayer || hasVotedThisSeason} className={`w-full max-w-[160px] px-8 py-3 rounded-xl font-black transition-all ${isOwnPlayer ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : hasVotedThisSeason ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-900 text-white hover:bg-gray-700 active:scale-95'}`}>{isOwnPlayer ? 'Your Player' : hasVotedThisSeason ? 'Vote Cast' : 'Vote'}</button>)}
-                         {isAdmin && (<button onClick={() => deleteNomination(nom.id)} className="text-xs font-bold text-red-400 hover:text-red-600 uppercase tracking-widest transition-colors mt-2">Admin: Remove</button>)}
+                   <div key={nom.id} className="bg-slate-900 border border-slate-800 p-6 rounded-3xl flex flex-col md:flex-row justify-between items-center shadow-md">
+                      <div className="w-full md:w-1/3"><h3 className="text-2xl font-black text-white">{nom.player_name}</h3><p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mt-1">By {nom.manager?.name}</p></div>
+                      <div className="w-full md:w-1/3 flex justify-center my-6 md:my-0"><div className="bg-slate-950 border border-yellow-700/50 px-6 py-2.5 rounded-full flex items-center gap-3 shadow-inner"><span className="text-xl drop-shadow-md">⭐️</span><span className="text-2xl font-black text-yellow-500">{nom.voteCount}</span></div></div>
+                      <div className="w-full md:w-1/3 flex flex-col items-center md:items-end justify-center gap-3">
+                         {isTotal ? (<span className="text-slate-600 font-bold italic">Voting closed</span>) : iVotedForThis ? (<span className="bg-green-900/40 text-green-400 px-8 py-3 rounded-xl font-black flex items-center gap-2 border border-green-500/50">✅ Voted</span>) : (<button onClick={() => castVote(nom)} disabled={isOwnPlayer || hasVotedThisSeason} className={`w-full md:max-w-[160px] px-8 py-3.5 rounded-xl font-black transition-all text-sm uppercase tracking-wider ${isOwnPlayer ? 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700' : hasVotedThisSeason ? 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700' : 'bg-white text-slate-900 hover:bg-slate-200 active:scale-95 shadow-lg'}`}>{isOwnPlayer ? 'Your Player' : hasVotedThisSeason ? 'Vote Cast' : 'VOTE'}</button>)}
+                         {isAdmin && (<button onClick={() => deleteNomination(nom.id)} className="text-[10px] font-black text-slate-600 hover:text-red-500 uppercase tracking-widest transition-colors mt-1">Admin: Remove</button>)}
                       </div>
                    </div>
               )})}
@@ -921,6 +954,23 @@ export default function Home() {
         )}
 
       </div>
+
+      {/* MOBILE BOTTOM NAVIGATION (Fixed) */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-950/90 backdrop-blur-xl border-t border-slate-800 flex justify-around items-center px-1 py-2 z-50 overflow-x-auto safe-area-pb shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+        {TABS.map(tab => (
+           <button 
+             key={tab.id}
+             onClick={() => setActiveTab(tab.id)} 
+             className={`flex flex-col items-center justify-center w-[70px] min-w-[70px] py-1 gap-1 transition-all rounded-xl ${activeTab === tab.id ? 'text-cyan-400' : 'text-slate-500 hover:text-slate-300'}`}
+           >
+             <span className="text-xl mb-0.5">{tab.icon}</span>
+             <span className="text-[9px] font-black uppercase tracking-widest">{tab.label}</span>
+             {/* Active Indicator dot */}
+             <div className={`h-1 w-1 rounded-full mt-0.5 ${activeTab === tab.id ? 'bg-cyan-400' : 'bg-transparent'}`}></div>
+           </button>
+        ))}
+      </div>
+
     </div>
   );
 }
