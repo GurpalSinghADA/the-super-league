@@ -32,6 +32,10 @@ export default function Home() {
   const [myManagerId, setMyManagerId] = useState(''); // Set automatically upon login
   const [password, setPassword] = useState(''); // For Admin Actions
   
+  // Transfer Filter States
+  const [transferManagerFilter, setTransferManagerFilter] = useState<string>('all');
+  const [transferTypeFilter, setTransferTypeFilter] = useState<string>('all');
+
   // Time States
   const [ukTime, setUkTime] = useState<string>('');
   const [currentTime, setCurrentTime] = useState(Date.now());
@@ -117,12 +121,22 @@ export default function Home() {
   // --- ADMIN CHECK ---
   const isAdmin = managers.find(m => m.id === myManagerId)?.name === 'Gurpal';
 
-  // Filter Data
+  // Filter Data Base (By Season)
   const isTotal = selectedSeasonId === 'all';
   const currentSeasonMatches = isTotal ? matches : matches.filter(match => match.season_id === selectedSeasonId);
   const currentSeasonTransfers = isTotal ? transfers : transfers.filter(transfer => transfer.season_id === selectedSeasonId);
   const currentSeasonAuctions = isTotal ? auctions : auctions.filter(auction => auction.season_id === selectedSeasonId);
   const currentSeasonNominations = isTotal ? nominations : nominations.filter(nom => nom.season_id === selectedSeasonId);
+
+  // Apply Transfer Activity Filters
+  const displayedTransfers = currentSeasonTransfers.filter(t => {
+    const matchManager = transferManagerFilter === 'all' || t.manager_id === transferManagerFilter;
+    const matchType = 
+      transferTypeFilter === 'all' || 
+      (transferTypeFilter === 'in' && t.transfer_fee < 0) || 
+      (transferTypeFilter === 'out' && t.transfer_fee > 0);
+    return matchManager && matchType;
+  });
 
   // Calculations
   const calculateTable = () => {
@@ -179,15 +193,13 @@ export default function Home() {
     }
   };
 
-  // --- NEW: Admin Remove Transfer ---
+  // --- Admin Remove Transfer ---
   const deleteTransfer = async (transferId: string) => {
     if (!isAdmin) return;
     const confirmDelete = window.confirm("Commissioner Action: Are you sure you want to completely remove this transfer?");
     if (!confirmDelete) return;
 
     await supabase.from('transfers').delete().eq('id', transferId);
-    
-    // Refresh transfers list
     const { data } = await supabase.from('transfers').select('*, manager:manager_id(name)');
     if (data) setTransfers(data);
   };
@@ -410,11 +422,11 @@ export default function Home() {
         {/* ======================= TRANSFERS TAB ======================= */}
         {activeTab === 'transfers' && (
           <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                {managerBalances.map(mb => (
-                  <div key={mb.id} className="bg-white p-6 rounded-2xl border shadow-sm flex flex-col justify-center items-center">
-                     <h4 className="text-gray-500 font-bold uppercase tracking-wide text-xs mb-2">{mb.name}&apos;s Net Spend</h4>
-                     <p className={`text-3xl font-black ${mb.net >= 0 ? 'text-green-500' : 'text-red-500'}`}>{mb.net >= 0 ? '+' : ''}£{mb.net}M</p>
+                  <div key={mb.id} className="bg-white p-6 rounded-2xl border shadow-sm flex flex-col justify-center items-center text-center">
+                     <h4 className="text-gray-500 font-bold uppercase tracking-wide text-xs mb-2">{mb.name}&apos;s Net</h4>
+                     <p className={`text-2xl lg:text-3xl font-black ${mb.net >= 0 ? 'text-green-500' : 'text-red-500'}`}>{mb.net >= 0 ? '+' : ''}£{mb.net}M</p>
                   </div>
                ))}
             </div>
@@ -459,35 +471,63 @@ export default function Home() {
             )}
 
             <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-200">
-              <h2 className="text-2xl font-bold mb-6 text-gray-800">🔄 Transfer Activity {isTotal && '(All Time)'}</h2>
+              {/* Filter Headers */}
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                <h2 className="text-2xl font-bold text-gray-800">🔄 Transfer Activity {isTotal && '(All Time)'}</h2>
+                <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                  <select 
+                    className="p-2.5 bg-gray-50 border border-gray-200 text-gray-900 font-bold rounded-lg text-sm outline-none cursor-pointer w-full sm:w-auto"
+                    value={transferManagerFilter}
+                    onChange={(e) => setTransferManagerFilter(e.target.value)}
+                  >
+                    <option value="all">👥 All Managers</option>
+                    {managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                  <select 
+                    className="p-2.5 bg-gray-50 border border-gray-200 text-gray-900 font-bold rounded-lg text-sm outline-none cursor-pointer w-full sm:w-auto"
+                    value={transferTypeFilter}
+                    onChange={(e) => setTransferTypeFilter(e.target.value)}
+                  >
+                    <option value="all">💸 All Types</option>
+                    <option value="in">📥 Signed (Money Out)</option>
+                    <option value="out">📤 Sold (Money In)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Feed List */}
               <div className="grid gap-4">
-                {currentSeasonTransfers.slice().reverse().map((transfer) => (
-                  <div key={transfer.id} className="bg-white border p-4 rounded-xl flex flex-col md:flex-row justify-between items-center shadow-sm">
-                    <div className="flex items-center gap-4 w-full md:w-1/3">
-                      <div className="bg-blue-100 text-blue-600 p-3 rounded-full text-xl">👤</div>
-                      <span className="font-bold text-gray-800 text-lg">{transfer.player_name}</span>
+                {displayedTransfers.length > 0 ? (
+                  displayedTransfers.slice().reverse().map((transfer) => (
+                    <div key={transfer.id} className="bg-white border border-gray-200 p-4 rounded-xl flex flex-col md:flex-row justify-between items-center shadow-sm hover:border-blue-200 transition-colors">
+                      <div className="flex items-center gap-4 w-full md:w-1/3">
+                        <div className="bg-blue-50 text-blue-600 p-3 rounded-full text-xl border border-blue-100">👤</div>
+                        <span className="font-bold text-gray-800 text-lg">{transfer.player_name}</span>
+                      </div>
+                      <div className="flex items-center gap-2 w-full md:w-1/3 justify-center text-gray-500 font-medium my-3 md:my-0">
+                        {transfer.transfer_fee < 0 ? 'Signed by ' : 'Sold by '} 
+                        <span className="font-bold text-gray-800">{transfer.manager?.name}</span>
+                      </div>
+                      <div className="w-full md:w-1/3 flex flex-col items-center md:items-end justify-center gap-2">
+                        <span className={`border px-5 py-2 rounded-full font-black tracking-wide ${transfer.transfer_fee >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-600'}`}>
+                          {transfer.transfer_fee > 0 ? '+' : ''}£{transfer.transfer_fee}M
+                        </span>
+                        {isAdmin && (
+                          <button 
+                            onClick={() => deleteTransfer(transfer.id)}
+                            className="text-xs font-bold text-red-400 hover:text-red-600 uppercase tracking-widest transition-colors"
+                          >
+                            Admin: Remove
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 w-full md:w-1/3 justify-center text-gray-500 font-medium my-2 md:my-0">
-                      {transfer.transfer_fee < 0 ? 'Signed by ' : 'Sold by '} 
-                      <span className="font-bold text-gray-800">{transfer.manager?.name}</span>
-                    </div>
-                    
-                    {/* Updated Section: Price Tag + Admin Remove Button */}
-                    <div className="w-full md:w-1/3 flex flex-col items-end justify-center gap-2 mt-4 md:mt-0">
-                      <span className={`border px-4 py-2 rounded-full font-black tracking-wide ${transfer.transfer_fee >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-600'}`}>
-                        {transfer.transfer_fee > 0 ? '+' : ''}£{transfer.transfer_fee}M
-                      </span>
-                      {isAdmin && (
-                        <button 
-                          onClick={() => deleteTransfer(transfer.id)}
-                          className="text-xs font-bold text-red-400 hover:text-red-600 uppercase tracking-widest transition-colors mt-1"
-                        >
-                          Admin: Remove
-                        </button>
-                      )}
-                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                    <p className="text-gray-500 font-bold text-lg">No transfers found for these filters.</p>
                   </div>
-                ))}
+                )}
               </div>
             </div>
           </div>
