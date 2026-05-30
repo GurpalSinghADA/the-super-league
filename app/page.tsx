@@ -261,16 +261,16 @@ export default function Home() {
 
   // Calculate Hall of Fame Records (Always All-Time)
   const calculateHallOfFame = () => {
-    let mostExpensiveTransfer = null;
+    let mostExpensiveTransfer: any = null;
     let maxFee = -1;
     
-    let biggestDemolition = null;
+    let biggestDemolition: any = null;
     let maxMargin = -1;
     
-    let highestScoringGame = null;
+    let highestScoringGame: any = null;
     let maxGoals = -1;
 
-    let maxPointsRecord = null;
+    let maxPointsRecord: any = null;
     let maxPts = -1;
 
     // Highest Transfer
