@@ -130,7 +130,7 @@ export default function Home() {
   const currentSeasonAuctions = isTotal ? auctions : auctions.filter(auction => auction.season_id === selectedSeasonId);
   const currentSeasonNominations = isTotal ? nominations : nominations.filter(nom => nom.season_id === selectedSeasonId);
 
-  // Apply Transfer Activity Filters
+  // Transfer Activity Filters
   const displayedTransfers = currentSeasonTransfers.filter(t => {
     const matchManager = transferManagerFilter === 'all' || t.manager_id === transferManagerFilter;
     const matchType = 
@@ -140,10 +140,10 @@ export default function Home() {
     return matchManager && matchType;
   });
 
-  // Calculate League Table
+  // Calculate League Table & Form Guide
   const calculateTable = () => {
     let table: Record<string, any> = {};
-    managers.forEach(m => { table[m.id] = { id: m.id, name: m.name, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0 }; });
+    managers.forEach(m => { table[m.id] = { id: m.id, name: m.name, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0, form: [] }; });
 
     currentSeasonMatches.forEach(match => {
       if (!table[match.home_manager_id] || !table[match.away_manager_id]) return;
@@ -153,12 +153,27 @@ export default function Home() {
       home.gf += match.home_goals; away.gf += match.away_goals;
       home.ga += match.away_goals; away.ga += match.home_goals;
 
-      if (match.home_goals > match.away_goals) { home.w += 1; home.pts += 3; away.l += 1; } 
-      else if (match.home_goals < match.away_goals) { away.w += 1; away.pts += 3; home.l += 1; } 
-      else { home.d += 1; home.pts += 1; away.d += 1; away.pts += 1; }
+      if (match.home_goals > match.away_goals) { 
+        home.w += 1; home.pts += 3; home.form.push('W');
+        away.l += 1; away.form.push('L');
+      } 
+      else if (match.home_goals < match.away_goals) { 
+        away.w += 1; away.pts += 3; away.form.push('W');
+        home.l += 1; home.form.push('L');
+      } 
+      else { 
+        home.d += 1; home.pts += 1; home.form.push('D');
+        away.d += 1; away.pts += 1; away.form.push('D');
+      }
       
       home.gd = home.gf - home.ga; away.gd = away.gf - away.ga;
     });
+
+    // Trim form to only the last 5 matches
+    Object.values(table).forEach(row => {
+      row.form = row.form.slice(-5);
+    });
+
     return Object.values(table).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
   };
 
@@ -168,7 +183,7 @@ export default function Home() {
     return { ...m, net };
   });
 
-  // Calculate Profiles Stats
+  // Calculate Profiles & Achievements
   const managerProfiles = managers.map(m => {
     const mMatches = currentSeasonMatches.filter(match => match.home_manager_id === m.id || match.away_manager_id === m.id);
     let w=0, d=0, l=0;
@@ -176,6 +191,10 @@ export default function Home() {
     let minGd = 999;
     let biggestWin = null;
     let worstDefeat = null;
+    
+    // Achievement Trackers
+    let cleanSheets = 0;
+    let scoredFive = false;
 
     mMatches.forEach(match => {
       const isHome = match.home_manager_id === m.id;
@@ -190,12 +209,15 @@ export default function Home() {
 
       if(gd > maxGd && gd > 0) { maxGd = gd; biggestWin = `${mGoals}-${oppGoals} vs ${oppName || 'Unknown'}`; }
       if(gd < minGd && gd < 0) { minGd = gd; worstDefeat = `${mGoals}-${oppGoals} vs ${oppName || 'Unknown'}`; }
+      
+      if(oppGoals === 0) cleanSheets++;
+      if(mGoals >= 5) scoredFive = true;
     });
 
     const winPct = mMatches.length > 0 ? Math.round((w / mMatches.length) * 100) : 0;
     const mTransfers = currentSeasonTransfers.filter(t => t.manager_id === m.id);
+    const mNetSpend = mTransfers.reduce((sum, t) => sum + Number(t.transfer_fee), 0);
     
-    // Most expensive signing based on absolute transfer fee
     let biggestTransfer = null;
     if (mTransfers.length > 0) {
       biggestTransfer = mTransfers.reduce((prev, current) =>
@@ -203,7 +225,15 @@ export default function Home() {
       );
     }
 
-    return { ...m, p: mMatches.length, w, d, l, winPct, biggestWin: maxGd > 0 ? biggestWin : 'N/A', worstDefeat: minGd < 0 ? worstDefeat : 'N/A', biggestTransfer };
+    // Assign Achievements
+    const achievements = [];
+    if (cleanSheets >= 3) achievements.push({ icon: '🛑', title: 'Park the Bus', desc: '3+ Clean Sheets' });
+    if (mNetSpend <= -150) achievements.push({ icon: '💸', title: 'Financial Ruin', desc: 'Net Spend ≤ -£150M' });
+    if (scoredFive) achievements.push({ icon: '🏏', title: 'Cricket Score', desc: 'Scored 5+ goals in a game' });
+    if (biggestTransfer && Math.abs(biggestTransfer.transfer_fee) >= 80) achievements.push({ icon: '🤑', title: 'Galáctico', desc: '£80M+ on a single player' });
+    if (w >= 5) achievements.push({ icon: '🔥', title: 'Unstoppable', desc: 'Won 5+ Matches' });
+
+    return { ...m, p: mMatches.length, w, d, l, winPct, biggestWin: maxGd > 0 ? biggestWin : 'N/A', worstDefeat: minGd < 0 ? worstDefeat : 'N/A', biggestTransfer, achievements };
   });
 
   // Calculate H2H Stats
@@ -214,7 +244,7 @@ export default function Home() {
       (m.home_manager_id === h2hManagerB && m.away_manager_id === h2hManagerA)
     );
     h2hStats.p = h2hMatches.length;
-    h2hStats.matches = h2hMatches.slice().reverse(); // Show newest first
+    h2hStats.matches = h2hMatches.slice().reverse();
 
     h2hMatches.forEach(m => {
       const aIsHome = m.home_manager_id === h2hManagerA;
@@ -228,6 +258,13 @@ export default function Home() {
       else h2hStats.d++;
     });
   }
+
+  // Generate Breaking News Ticker (Last 10 Events)
+  const tickerEvents = [];
+  matches.slice(-5).forEach(m => tickerEvents.push(`⚽ RESULT: ${m.home?.name} ${m.home_goals}-${m.away_goals} ${m.away?.name}`));
+  transfers.slice(-5).forEach(t => tickerEvents.push(`🤝 TRANSFER: ${t.player_name} ${t.transfer_fee < 0 ? 'signed by' : 'sold by'} ${t.manager?.name} for £${Math.abs(t.transfer_fee)}M`));
+  // Simple randomization to mix matches and transfers
+  const shuffledTicker = tickerEvents.sort(() => 0.5 - Math.random()).join("   |   ");
 
   // Database Submissions
   const submitMatch = async (e: React.FormEvent) => {
@@ -379,12 +416,25 @@ export default function Home() {
 
   // 2. THE MAIN APP DASHBOARD
   return (
-    <div className="min-h-screen bg-slate-50 text-gray-900 p-4 md:p-8 font-sans overflow-x-hidden">
-      <style dangerouslySetInnerHTML={{__html: `@keyframes popInOut { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } } .animate-pop { animation: popInOut 1s ease-in-out infinite; }`}} />
+    <div className="min-h-screen bg-slate-50 text-gray-900 font-sans overflow-x-hidden">
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes popInOut { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } } 
+        .animate-pop { animation: popInOut 1s ease-in-out infinite; }
+        @keyframes marquee { 0% { transform: translateX(100vw); } 100% { transform: translateX(-100%); } }
+        .animate-marquee { animation: marquee 35s linear infinite; display: inline-block; white-space: nowrap; }
+      `}} />
 
-      <div className="max-w-5xl mx-auto space-y-6">
+      {/* Breaking News Ticker */}
+      <div className="w-full bg-red-600 text-white overflow-hidden py-2 border-b-4 border-red-700 shadow-md relative z-10 flex items-center">
+        <div className="bg-red-700 font-black px-4 py-2 absolute left-0 z-20 h-full flex items-center shadow-lg">🚨 LATEST</div>
+        <div className="w-full pl-24">
+           <span className="animate-marquee font-bold tracking-wider">{shuffledTicker || "Welcome to The Super League..."}</span>
+        </div>
+      </div>
+
+      <div className="max-w-5xl mx-auto space-y-6 p-4 md:p-8">
         
-        <div className="text-center py-6">
+        <div className="text-center py-4">
           <h1 className="text-5xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
             The Super League
           </h1>
@@ -427,15 +477,34 @@ export default function Home() {
                <table className="w-full text-left border-collapse">
                  <thead>
                    <tr className="bg-gray-50 border-y border-gray-200 text-gray-500 text-sm uppercase tracking-wider">
-                     <th className="p-4 font-semibold rounded-tl-lg">Manager</th><th className="p-4 font-semibold">P</th><th className="p-4 font-semibold">W</th><th className="p-4 font-semibold">D</th><th className="p-4 font-semibold">L</th><th className="p-4 font-semibold">GD</th><th className="p-4 font-bold text-blue-600 rounded-tr-lg">Pts</th>
+                     <th className="p-4 font-semibold rounded-tl-lg">Manager</th>
+                     <th className="p-4 font-semibold">P</th>
+                     <th className="p-4 font-semibold">W</th>
+                     <th className="p-4 font-semibold">D</th>
+                     <th className="p-4 font-semibold">L</th>
+                     <th className="p-4 font-semibold">Form</th>
+                     <th className="p-4 font-semibold">GD</th>
+                     <th className="p-4 font-bold text-blue-600 rounded-tr-lg">Pts</th>
                    </tr>
                  </thead>
                  <tbody className="divide-y divide-gray-100">
                    {leagueTable.map((row, index) => (
                      <tr key={row.id} className="hover:bg-blue-50/50 transition-colors">
                        <td className="p-4 flex items-center gap-3"><span className="text-gray-400 font-medium text-sm">{index + 1}</span><span className="font-bold text-gray-800">{row.name}</span></td>
-                       <td className="p-4 text-gray-600">{row.p}</td><td className="p-4 text-gray-600">{row.w}</td><td className="p-4 text-gray-600">{row.d}</td><td className="p-4 text-gray-600">{row.l}</td>
-                       <td className="p-4 text-gray-600 font-medium">{row.gd > 0 ? `+${row.gd}` : row.gd}</td><td className="p-4 font-black text-blue-600 text-lg">{row.pts}</td>
+                       <td className="p-4 text-gray-600">{row.p}</td>
+                       <td className="p-4 text-gray-600">{row.w}</td>
+                       <td className="p-4 text-gray-600">{row.d}</td>
+                       <td className="p-4 text-gray-600">{row.l}</td>
+                       
+                       {/* Form Guide UI */}
+                       <td className="p-4 flex gap-1 items-center h-full min-h-[60px]">
+                         {row.form.length > 0 ? row.form.map((f: string, i: number) => (
+                           <span key={i} className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm ${f === 'W' ? 'bg-green-500' : f === 'D' ? 'bg-gray-400' : 'bg-red-500'}`}>{f}</span>
+                         )) : <span className="text-gray-300 font-bold">-</span>}
+                       </td>
+
+                       <td className="p-4 text-gray-600 font-medium">{row.gd > 0 ? `+${row.gd}` : row.gd}</td>
+                       <td className="p-4 font-black text-blue-600 text-lg">{row.pts}</td>
                      </tr>
                    ))}
                  </tbody>
@@ -603,7 +672,7 @@ export default function Home() {
                         </div>
                      </div>
 
-                     <div className="space-y-3">
+                     <div className="space-y-3 mb-6">
                         <div className="flex justify-between items-center p-3 bg-green-50 rounded-xl border border-green-100">
                            <span className="text-xs font-bold text-green-700 uppercase tracking-widest">Biggest Win</span>
                            <span className="font-black text-gray-800">{profile.biggestWin}</span>
@@ -624,6 +693,22 @@ export default function Home() {
                            )}
                         </div>
                      </div>
+
+                     {/* Achievements Section */}
+                     <div className="border-t pt-4">
+                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Trophy Cabinet</h3>
+                        <div className="flex flex-wrap gap-2">
+                          {profile.achievements.length > 0 ? profile.achievements.map((ach: any, i: number) => (
+                             <div key={i} className="flex items-center gap-2 bg-yellow-50 border border-yellow-200 px-3 py-1.5 rounded-lg" title={ach.desc}>
+                                <span className="text-lg">{ach.icon}</span>
+                                <span className="text-xs font-black text-yellow-800 uppercase">{ach.title}</span>
+                             </div>
+                          )) : (
+                             <div className="text-xs font-bold text-gray-400 italic">No achievements unlocked yet.</div>
+                          )}
+                        </div>
+                     </div>
+
                    </div>
                 </div>
               ))}
