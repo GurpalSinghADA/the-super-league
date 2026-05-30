@@ -289,7 +289,8 @@ export default function Home() {
       const sId = match.season_id; const keyHome = `${sId}_${match.home_manager_id}`; const keyAway = `${sId}_${match.away_manager_id}`;
       if (!seasonManagerPoints[keyHome]) seasonManagerPoints[keyHome] = 0;
       if (!seasonManagerPoints[keyAway]) seasonManagerPoints[keyAway] = 0;
-      if (match.home_goals > match.away_goals) seasonManagerPoints[keyHome] += 3; else if (match.home_goals < match.away_goals) seasonManagerPoints[keyAway] += 3; else { seasonManagerPoints[keyHome] += 1; seasonManagerPoints[keyAway] += 1; }
+      if (match.home_goals > match.away_goals) seasonManagerPoints[keyHome] += 3; else if (match.home_goals < match.away_goals) seasonManagerPoints[keyAway] += 3; else { seasonManagerPoints[keyHome] +
+= 1; seasonManagerPoints[keyAway] += 1; }
     });
     Object.entries(seasonManagerPoints).forEach(([key, pts]) => {
       if (pts > maxPts) { maxPts = pts; const [sId, mId] = key.split('_'); maxPointsRecord = { managerName: managers.find(x => x.id === mId)?.name, seasonName: seasons.find(x => x.id === sId)?.name, points: pts }; }
@@ -562,7 +563,7 @@ export default function Home() {
                 className={`min-w-[90px] py-2.5 px-3 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2 ${activeTab === tab.id ? 'bg-white text-blue-600 shadow-sm border border-gray-200' : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'}`}
               >
                 {tab.id === 'ebay' ? (
-                  <img src="/ebay-logo.png" alt="eBay" className="h-4 w-auto object-contain" />
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" alt="eBay" className="h-5 w-auto object-contain" />
                 ) : (
                   <span>{tab.icon}</span>
                 )}
