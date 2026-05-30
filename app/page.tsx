@@ -27,7 +27,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   
   // App States
-  const [activeTab, setActiveTab] = useState<'league' | 'transfers' | 'ebay' | 'awards' | 'profiles' | 'h2h'>('league');
+  const [activeTab, setActiveTab] = useState<'league' | 'transfers' | 'ebay' | 'awards' | 'profiles' | 'h2h' | 'hof'>('league');
   const [selectedSeasonId, setSelectedSeasonId] = useState<string>('all');
   const [myManagerId, setMyManagerId] = useState(''); 
   const [password, setPassword] = useState(''); 
@@ -169,11 +169,7 @@ export default function Home() {
       home.gd = home.gf - home.ga; away.gd = away.gf - away.ga;
     });
 
-    // Trim form to only the last 5 matches
-    Object.values(table).forEach(row => {
-      row.form = row.form.slice(-5);
-    });
-
+    Object.values(table).forEach(row => { row.form = row.form.slice(-5); });
     return Object.values(table).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
   };
 
@@ -192,7 +188,6 @@ export default function Home() {
     let biggestWin = null;
     let worstDefeat = null;
     
-    // Achievement Trackers
     let cleanSheets = 0;
     let scoredFive = false;
 
@@ -225,7 +220,6 @@ export default function Home() {
       );
     }
 
-    // Assign Achievements
     const achievements = [];
     if (cleanSheets >= 3) achievements.push({ icon: '🛑', title: 'Park the Bus', desc: '3+ Clean Sheets' });
     if (mNetSpend <= -150) achievements.push({ icon: '💸', title: 'Financial Ruin', desc: 'Net Spend ≤ -£150M' });
@@ -259,12 +253,80 @@ export default function Home() {
     });
   }
 
-  // Generate Breaking News Ticker (Last 10 Events)
+  // Generate Breaking News Ticker
   const tickerEvents = [];
   matches.slice(-5).forEach(m => tickerEvents.push(`⚽ RESULT: ${m.home?.name} ${m.home_goals}-${m.away_goals} ${m.away?.name}`));
   transfers.slice(-5).forEach(t => tickerEvents.push(`🤝 TRANSFER: ${t.player_name} ${t.transfer_fee < 0 ? 'signed by' : 'sold by'} ${t.manager?.name} for £${Math.abs(t.transfer_fee)}M`));
-  // Simple randomization to mix matches and transfers
   const shuffledTicker = tickerEvents.sort(() => 0.5 - Math.random()).join("   |   ");
+
+  // Calculate Hall of Fame Records (Always All-Time)
+  const calculateHallOfFame = () => {
+    let mostExpensiveTransfer = null;
+    let maxFee = -1;
+    
+    let biggestDemolition = null;
+    let maxMargin = -1;
+    
+    let highestScoringGame = null;
+    let maxGoals = -1;
+
+    let maxPointsRecord = null;
+    let maxPts = -1;
+
+    // Highest Transfer
+    transfers.forEach(t => {
+      const fee = Math.abs(Number(t.transfer_fee));
+      if (fee > maxFee) {
+        maxFee = fee;
+        mostExpensiveTransfer = { ...t, absFee: fee, seasonName: seasons.find(s => s.id === t.season_id)?.name };
+      }
+    });
+
+    // Biggest Demolition & Goal Fest
+    matches.forEach(m => {
+      const margin = Math.abs(m.home_goals - m.away_goals);
+      if (margin > maxMargin) {
+        maxMargin = margin;
+        biggestDemolition = { ...m, margin, seasonName: seasons.find(s => s.id === m.season_id)?.name };
+      }
+
+      const totalGoals = m.home_goals + m.away_goals;
+      if (totalGoals > maxGoals) {
+        maxGoals = totalGoals;
+        highestScoringGame = { ...m, totalGoals, seasonName: seasons.find(s => s.id === m.season_id)?.name };
+      }
+    });
+
+    // Most Points in a Single Season
+    const seasonManagerPoints: Record<string, number> = {};
+    matches.forEach(match => {
+      const sId = match.season_id;
+      const keyHome = `${sId}_${match.home_manager_id}`;
+      const keyAway = `${sId}_${match.away_manager_id}`;
+      if (!seasonManagerPoints[keyHome]) seasonManagerPoints[keyHome] = 0;
+      if (!seasonManagerPoints[keyAway]) seasonManagerPoints[keyAway] = 0;
+      
+      if (match.home_goals > match.away_goals) seasonManagerPoints[keyHome] += 3;
+      else if (match.home_goals < match.away_goals) seasonManagerPoints[keyAway] += 3;
+      else { seasonManagerPoints[keyHome] += 1; seasonManagerPoints[keyAway] += 1; }
+    });
+
+    Object.entries(seasonManagerPoints).forEach(([key, pts]) => {
+      if (pts > maxPts) {
+        maxPts = pts;
+        const [sId, mId] = key.split('_');
+        maxPointsRecord = {
+          managerName: managers.find(x => x.id === mId)?.name,
+          seasonName: seasons.find(x => x.id === sId)?.name,
+          points: pts
+        };
+      }
+    });
+
+    return { mostExpensiveTransfer, biggestDemolition, highestScoringGame, maxPointsRecord };
+  };
+
+  const hof = calculateHallOfFame();
 
   // Database Submissions
   const submitMatch = async (e: React.FormEvent) => {
@@ -448,6 +510,7 @@ export default function Home() {
             <button onClick={() => setActiveTab('league')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all ${activeTab === 'league' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>⚽ League</button>
             <button onClick={() => setActiveTab('h2h')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all ${activeTab === 'h2h' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>⚔️ H2H</button>
             <button onClick={() => setActiveTab('profiles')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all ${activeTab === 'profiles' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>🛡️ Profiles</button>
+            <button onClick={() => setActiveTab('hof')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all ${activeTab === 'hof' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>🏛️ Hall of Fame</button>
             <button onClick={() => setActiveTab('transfers')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all ${activeTab === 'transfers' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>🤝 Transfers</button>
             <button onClick={() => setActiveTab('ebay')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2 ${activeTab === 'ebay' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>🛒 eBay</button>
             <button onClick={() => setActiveTab('awards')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all ${activeTab === 'awards' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>🏆 Awards</button>
@@ -550,6 +613,98 @@ export default function Home() {
              )}
            </div>
          )}
+
+        {/* ======================= HALL OF FAME TAB ======================= */}
+        {activeTab === 'hof' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="bg-yellow-50 border-2 border-yellow-400 text-yellow-900 p-6 rounded-2xl shadow-sm text-center">
+               <h2 className="text-4xl font-black tracking-wider uppercase mb-2">🏛️ The Hall of Fame</h2>
+               <p className="font-bold opacity-80">Permanent records from across all seasons of The Super League.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
+              {/* Record Transfer */}
+              <div className="bg-white border-2 border-gray-100 rounded-3xl p-6 shadow-md hover:shadow-lg transition-shadow relative overflow-hidden group">
+                <div className="absolute -right-10 -top-10 text-9xl opacity-5 group-hover:scale-110 transition-transform">💰</div>
+                <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Most Expensive Transfer</h3>
+                {hof.mostExpensiveTransfer ? (
+                  <>
+                    <p className="text-3xl font-black text-gray-900 mb-2">{hof.mostExpensiveTransfer.player_name}</p>
+                    <p className="text-4xl font-black text-blue-600 mb-4">£{hof.mostExpensiveTransfer.absFee}M</p>
+                    <div className="bg-gray-50 p-3 rounded-xl border flex justify-between items-center">
+                      <span className="font-bold text-gray-600">{hof.mostExpensiveTransfer.manager?.name}</span>
+                      <span className="text-xs font-bold text-gray-400 uppercase">{hof.mostExpensiveTransfer.seasonName}</span>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-gray-400 font-bold py-8">No transfers logged yet.</p>
+                )}
+              </div>
+
+              {/* The Invincible Season */}
+              <div className="bg-white border-2 border-gray-100 rounded-3xl p-6 shadow-md hover:shadow-lg transition-shadow relative overflow-hidden group">
+                <div className="absolute -right-10 -top-10 text-9xl opacity-5 group-hover:scale-110 transition-transform">👑</div>
+                <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">The Invincible Season</h3>
+                {hof.maxPointsRecord && hof.maxPointsRecord.points > 0 ? (
+                  <>
+                    <p className="text-3xl font-black text-gray-900 mb-2">{hof.maxPointsRecord.managerName}</p>
+                    <p className="text-4xl font-black text-yellow-500 mb-4">{hof.maxPointsRecord.points} PTS</p>
+                    <div className="bg-gray-50 p-3 rounded-xl border flex justify-center items-center">
+                      <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">{hof.maxPointsRecord.seasonName}</span>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-gray-400 font-bold py-8">No completed matches yet.</p>
+                )}
+              </div>
+
+              {/* Biggest Demolition */}
+              <div className="bg-white border-2 border-gray-100 rounded-3xl p-6 shadow-md hover:shadow-lg transition-shadow relative overflow-hidden group">
+                <div className="absolute -right-10 -top-10 text-9xl opacity-5 group-hover:scale-110 transition-transform">🥊</div>
+                <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Biggest Demolition</h3>
+                {hof.biggestDemolition ? (
+                  <>
+                    <div className="flex justify-between items-center my-4">
+                      <p className={`text-xl font-bold ${hof.biggestDemolition.home_goals > hof.biggestDemolition.away_goals ? 'text-gray-900' : 'text-gray-400'}`}>{hof.biggestDemolition.home?.name}</p>
+                      <p className="text-3xl font-black text-red-500 bg-red-50 px-4 py-1 rounded-xl border border-red-100">{hof.biggestDemolition.home_goals} - {hof.biggestDemolition.away_goals}</p>
+                      <p className={`text-xl font-bold ${hof.biggestDemolition.away_goals > hof.biggestDemolition.home_goals ? 'text-gray-900' : 'text-gray-400'}`}>{hof.biggestDemolition.away?.name}</p>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-xl border flex justify-center items-center mt-2">
+                      <span className="text-xs font-bold text-gray-400 uppercase">{hof.biggestDemolition.seasonName}</span>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-gray-400 font-bold py-8">No matches logged yet.</p>
+                )}
+              </div>
+
+              {/* Highest Scoring Thriller */}
+              <div className="bg-white border-2 border-gray-100 rounded-3xl p-6 shadow-md hover:shadow-lg transition-shadow relative overflow-hidden group">
+                <div className="absolute -right-10 -top-10 text-9xl opacity-5 group-hover:scale-110 transition-transform">🎇</div>
+                <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Highest Scoring Match</h3>
+                {hof.highestScoringGame ? (
+                  <>
+                    <div className="flex justify-between items-center my-4">
+                      <p className="text-xl font-bold text-gray-800">{hof.highestScoringGame.home?.name}</p>
+                      <div className="text-center">
+                        <p className="text-3xl font-black text-indigo-600 bg-indigo-50 px-4 py-1 rounded-xl border border-indigo-100 mb-1">{hof.highestScoringGame.home_goals} - {hof.highestScoringGame.away_goals}</p>
+                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{hof.highestScoringGame.totalGoals} Goals</p>
+                      </div>
+                      <p className="text-xl font-bold text-gray-800">{hof.highestScoringGame.away?.name}</p>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-xl border flex justify-center items-center mt-2">
+                      <span className="text-xs font-bold text-gray-400 uppercase">{hof.highestScoringGame.seasonName}</span>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-gray-400 font-bold py-8">No matches logged yet.</p>
+                )}
+              </div>
+
+            </div>
+          </div>
+        )}
 
         {/* ======================= H2H TAB ======================= */}
         {activeTab === 'h2h' && (
