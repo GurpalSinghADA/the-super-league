@@ -236,4 +236,743 @@ export default function Home() {
       biggestTransfer = mTransfers.reduce((prev, current) => Math.abs(Number(current.transfer_fee)) > Math.abs(Number(prev.transfer_fee)) ? current : prev );
     }
 
-    const achievements: {icon:
+    const achievements: {icon: string, title: string, desc: string}[] = [];
+    if (cleanSheets >= 3) achievements.push({ icon: '🛑', title: 'Park the Bus', desc: '3+ Clean Sheets' });
+    if (mNetSpend <= -150) achievements.push({ icon: '💸', title: 'Financial Ruin', desc: 'Net Spend ≤ -£150M' });
+    if (scoredFive) achievements.push({ icon: '🏏', title: 'Cricket Score', desc: 'Scored 5+ goals in a game' });
+    if (biggestTransfer && Math.abs(biggestTransfer.transfer_fee) >= 80) achievements.push({ icon: '🤑', title: 'Galáctico', desc: '£80M+ on a single player' });
+    if (w >= 5) achievements.push({ icon: '🔥', title: 'Unstoppable', desc: 'Won 5+ Matches' });
+
+    return { ...m, p: mMatches.length, w, d, l, winPct, biggestWin: maxGd > 0 ? biggestWin : 'N/A', worstDefeat: minGd < 0 ? worstDefeat : 'N/A', biggestTransfer, achievements };
+  });
+
+  // H2H
+  let h2hStats = { p: 0, aWins: 0, bWins: 0, d: 0, aGoals: 0, bGoals: 0, matches: [] as any[] };
+  if (h2hManagerA && h2hManagerB && h2hManagerA !== h2hManagerB) {
+    const h2hMatches = currentSeasonMatches.filter(m => (m.home_manager_id === h2hManagerA && m.away_manager_id === h2hManagerB) || (m.home_manager_id === h2hManagerB && m.away_manager_id === h2hManagerA));
+    h2hStats.p = h2hMatches.length;
+    h2hStats.matches = h2hMatches.slice().reverse();
+    h2hMatches.forEach(m => {
+      const aIsHome = m.home_manager_id === h2hManagerA;
+      const aG = aIsHome ? m.home_goals : m.away_goals;
+      const bG = aIsHome ? m.away_goals : m.home_goals;
+      h2hStats.aGoals += aG; h2hStats.bGoals += bG;
+      if(aG > bG) h2hStats.aWins++; else if(bG > aG) h2hStats.bWins++; else h2hStats.d++;
+    });
+  }
+
+  const tickerEvents: string[] = [];
+  matches.slice(-5).forEach(m => tickerEvents.push(`⚽ RESULT: ${m.home?.name} ${m.home_goals}-${m.away_goals} ${m.away?.name}`));
+  transfers.slice(-5).forEach(t => tickerEvents.push(`🤝 TRANSFER: ${t.player_name} ${t.transfer_fee < 0 ? 'signed by' : 'sold by'} ${t.manager?.name} for £${Math.abs(t.transfer_fee)}M`));
+  const shuffledTicker = tickerEvents.sort(() => 0.5 - Math.random()).join("   |   ");
+
+  const calculateHallOfFame = () => {
+    let mostExpensiveTransfer: any = null; let maxFee = -1;
+    let biggestDemolition: any = null; let maxMargin = -1;
+    let highestScoringGame: any = null; let maxGoals = -1;
+    let maxPointsRecord: any = null; let maxPts = -1;
+
+    transfers.forEach(t => {
+      const fee = Math.abs(Number(t.transfer_fee));
+      if (fee > maxFee) { maxFee = fee; mostExpensiveTransfer = { ...t, absFee: fee, seasonName: seasons.find(s => s.id === t.season_id)?.name }; }
+    });
+
+    matches.forEach(m => {
+      const margin = Math.abs(m.home_goals - m.away_goals);
+      if (margin > maxMargin) { maxMargin = margin; biggestDemolition = { ...m, margin, seasonName: seasons.find(s => s.id === m.season_id)?.name }; }
+      const totalGoals = m.home_goals + m.away_goals;
+      if (totalGoals > maxGoals) { maxGoals = totalGoals; highestScoringGame = { ...m, totalGoals, seasonName: seasons.find(s => s.id === m.season_id)?.name }; }
+    });
+
+    const seasonManagerPoints: Record<string, number> = {};
+    matches.forEach(match => {
+      const sId = match.season_id; const keyHome = `${sId}_${match.home_manager_id}`; const keyAway = `${sId}_${match.away_manager_id}`;
+      if (!seasonManagerPoints[keyHome]) seasonManagerPoints[keyHome] = 0;
+      if (!seasonManagerPoints[keyAway]) seasonManagerPoints[keyAway] = 0;
+      if (match.home_goals > match.away_goals) seasonManagerPoints[keyHome] += 3; else if (match.home_goals < match.away_goals) seasonManagerPoints[keyAway] += 3; else { seasonManagerPoints[keyHome] += 1; seasonManagerPoints[keyAway] += 1; }
+    });
+    Object.entries(seasonManagerPoints).forEach(([key, pts]) => {
+      if (pts > maxPts) { maxPts = pts; const [sId, mId] = key.split('_'); maxPointsRecord = { managerName: managers.find(x => x.id === mId)?.name, seasonName: seasons.find(x => x.id === sId)?.name, points: pts }; }
+    });
+    return { mostExpensiveTransfer, biggestDemolition, highestScoringGame, maxPointsRecord };
+  };
+  const hof = calculateHallOfFame();
+
+  // --- ACTIONS ---
+  const submitMatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isTotal) return alert("Select a specific season to log a match!");
+    if (!isAdmin && password !== "1") return alert("Incorrect admin password!");
+    if (!homeTeamId || !awayTeamId || homeTeamId === awayTeamId) return alert("Select valid teams!");
+    const { error } = await supabase.from('matches').insert([{ season_id: selectedSeasonId, home_manager_id: homeTeamId, away_manager_id: awayTeamId, home_goals: homeGoals, away_goals: awayGoals }]);
+    if (!error) {
+      setHomeGoals(0); setAwayGoals(0); setHomeTeamId(''); setAwayTeamId(''); setPassword(''); 
+    }
+  };
+
+  const submitTransfer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isTotal) return alert("Select a specific season to log a transfer!");
+    if (!isAdmin && password !== "1") return alert("Incorrect admin password!");
+    if (!playerName || !acquiringManagerId || transferFee === '') return alert("Fill all details!");
+    const { error } = await supabase.from('transfers').insert([{ season_id: selectedSeasonId, manager_id: acquiringManagerId, player_name: playerName, transfer_fee: transferFee }]);
+    if (!error) {
+      setPlayerName(''); setAcquiringManagerId(''); setTransferFee(''); setPassword('');
+    }
+  };
+
+  const deleteTransfer = async (transferId: string) => {
+    if (!isAdmin) return;
+    if (window.confirm("Commissioner Action: Remove this transfer?")) {
+      await supabase.from('transfers').delete().eq('id', transferId);
+    }
+  };
+
+  const listAuction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isTotal) return alert("Select a specific season to list a player!");
+    if (!isAdmin && password !== "1") return alert("Incorrect Admin password!");
+    if (!auctionPlayerName) return alert("Enter a player name!");
+    await supabase.from('auctions').insert([{ season_id: selectedSeasonId, player_name: auctionPlayerName, current_bid: auctionStartBid || 0, status: 'pending' }]);
+    setAuctionPlayerName(''); setAuctionStartBid(''); setPassword('');
+  };
+
+  const startAuctionTimer = async (auctionId: string) => {
+    if (!isAdmin && password !== "1" && window.prompt("Admin Password:") !== "1") return alert("Incorrect password.");
+    await supabase.from('auctions').update({ status: 'active', end_time: new Date(Date.now() + 30000).toISOString() }).eq('id', auctionId);
+  };
+
+  const placeBid = async (auctionId: string, currentBid: number, currentEndTime: string) => {
+    const bidValue = bidInputs[auctionId];
+    if (!bidValue || bidValue <= currentBid) return alert("Bid must be higher than the current bid!");
+    await supabase.from('auctions').update({ current_bid: bidValue, highest_bidder_id: myManagerId, end_time: new Date(new Date(currentEndTime).getTime() + 10000).toISOString() }).eq('id', auctionId);
+    setBidInputs({ ...bidInputs, [auctionId]: '' as any });
+  };
+
+  const archiveAuction = async (auctionId: string) => {
+    if (!isAdmin && password !== "1" && window.prompt("Admin Password:") !== "1") return alert("Incorrect password.");
+    await supabase.from('auctions').update({ status: 'archived' }).eq('id', auctionId);
+  };
+
+  const submitNomination = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isTotal) return alert("Select a specific season!");
+    if (!nominationName) return;
+    if (currentSeasonNominations.filter(n => n.manager_id === myManagerId).length >= 2) return alert("Max 2 nominations per season!");
+    await supabase.from('award_nominations').insert([{ season_id: selectedSeasonId, manager_id: myManagerId, player_name: nominationName }]);
+    setNominationName('');
+  };
+
+  const castVote = async (nomination: any) => {
+    if (nomination.manager_id === myManagerId) return alert("You cannot vote for a player you nominated!");
+    if (votes.find(v => v.voter_id === myManagerId && v.season_id === nomination.season_id)) return alert("You already voted this season!");
+    await supabase.from('award_votes').insert([{ nomination_id: nomination.id, voter_id: myManagerId, season_id: nomination.season_id }]);
+  };
+
+  const deleteNomination = async (nominationId: string) => {
+    if (!isAdmin) return;
+    if (window.confirm("Remove nomination?")) await supabase.from('award_nominations').delete().eq('id', nominationId);
+  };
+
+  // --- SQUAD BUILDER FUNCTIONS ---
+  const handlePositionClick = (managerId: string, pos: string) => {
+    if (managerId !== myManagerId) return; 
+    setActiveLineupPosition(pos);
+    setIsLineupModalOpen(true);
+  };
+
+  const saveSquadPlayer = async (nameToSave: string) => {
+    if (!nameToSave) return;
+    await supabase.from('lineups').delete().match({ manager_id: myManagerId, position: activeLineupPosition });
+    await supabase.from('lineups').insert([{ manager_id: myManagerId, position: activeLineupPosition, player_name: nameToSave }]);
+    setIsLineupModalOpen(false);
+    setCustomPlayerName('');
+  };
+
+  const clearSquadPlayer = async () => {
+    await supabase.from('lineups').delete().match({ manager_id: myManagerId, position: activeLineupPosition });
+    setIsLineupModalOpen(false);
+  };
+
+  const mySignedPlayers = Array.from(new Set(
+    transfers.filter(t => t.manager_id === myManagerId && t.transfer_fee < 0).map(t => t.player_name)
+  ));
+
+  const renderPitchPlayer = (manager: any, pos: string) => {
+    const isMine = manager.id === myManagerId;
+    const lineupEntry = lineups.find(l => l.manager_id === manager.id && l.position === pos);
+    const hasPlayer = !!lineupEntry;
+    
+    const cardBg = hasPlayer 
+      ? "bg-gradient-to-br from-yellow-100 via-yellow-300 to-yellow-500 border border-yellow-400" 
+      : "bg-white/80 border border-gray-300 border-dashed backdrop-blur-sm";
+
+    return (
+      <div 
+        onClick={() => handlePositionClick(manager.id, pos)}
+        className={`relative flex flex-col items-center justify-start w-[50px] h-[72px] sm:w-[60px] sm:h-[84px] ${cardBg} rounded-t-sm rounded-b-lg shadow-md ${isMine ? 'cursor-pointer hover:scale-110 hover:z-20 transition-transform group' : ''}`}
+      >
+        <div className={`absolute top-0.5 left-1 text-[8px] sm:text-[10px] font-black ${hasPlayer ? 'text-yellow-900' : 'text-gray-400'}`}>
+          {pos}
+        </div>
+        
+        <div className="mt-3 sm:mt-4 w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center">
+          {hasPlayer ? (
+            <span className="text-xl sm:text-2xl drop-shadow-sm">👤</span>
+          ) : (
+            <span className="text-gray-400 text-sm font-black">+</span>
+          )}
+        </div>
+        
+        {hasPlayer && (
+          <div className="absolute bottom-1 w-full text-center px-0.5">
+            <span className="text-[8px] sm:text-[9px] font-black text-yellow-900 leading-tight uppercase truncate block drop-shadow-sm">
+              {lineupEntry.player_name}
+            </span>
+          </div>
+        )}
+        
+        {!hasPlayer && isMine && (
+          <div className="absolute inset-0 bg-blue-600/80 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="text-[10px] font-black text-white uppercase tracking-widest">Add</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+
+  // --- RENDER SCREENS ---
+
+  if (loading) return <div className="min-h-screen bg-slate-50 flex items-center justify-center p-10 text-center text-gray-500 font-bold animate-pulse">Loading the pitch...</div>;
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border border-gray-200 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-cyan-400"></div>
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
+              The Super League
+            </h1>
+            <p className="mt-2 text-gray-500 font-medium">Please sign in to continue</p>
+          </div>
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Who are you?</label>
+              <select className="w-full p-4 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl font-bold focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer shadow-sm" value={loginManagerId} onChange={(e) => setLoginManagerId(e.target.value)}>
+                <option value="">Select Manager...</option>{managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Password</label>
+              <input type="password" placeholder="Enter password" className="w-full p-4 bg-gray-50 border border-gray-200 text-gray-900 placeholder-gray-400 rounded-xl font-bold focus:ring-2 focus:ring-blue-500 outline-none shadow-sm" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} />
+            </div>
+            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl shadow-md transition-all active:scale-95 text-lg uppercase tracking-wider">
+              Enter Locker Room
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-gray-900 font-sans overflow-x-hidden relative pb-24 md:pb-8">
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes popInOut { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } } 
+        .animate-pop { animation: popInOut 1s ease-in-out infinite; }
+        @keyframes marquee { 0% { transform: translateX(100vw); } 100% { transform: translateX(-100%); } }
+        .animate-marquee { animation: marquee 35s linear infinite; display: inline-block; white-space: nowrap; }
+        .custom-scrollbar::-webkit-scrollbar { display: none; } .custom-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}} />
+
+      {/* SQUAD BUILDER MODAL */}
+      {isLineupModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+           <div className="bg-white rounded-3xl p-6 md:p-8 w-full max-w-md shadow-2xl border border-gray-100 relative animate-in zoom-in-95 duration-200">
+              <h2 className="text-2xl font-black mb-2 text-gray-900">Assign {activeLineupPosition}</h2>
+              <p className="text-sm font-bold text-gray-500 mb-6">Select a player from your squad or type a name.</p>
+              
+              <div className="space-y-6">
+                 <div>
+                    <label className="text-xs font-black uppercase text-gray-400 tracking-widest mb-2 block">Custom Input</label>
+                    <div className="flex gap-2">
+                       <input 
+                         type="text" 
+                         placeholder="Enter player name..." 
+                         className="flex-1 p-3 bg-white border border-gray-200 text-gray-900 rounded-xl font-bold outline-none focus:border-blue-500 transition-colors"
+                         value={customPlayerName}
+                         onChange={(e) => setCustomPlayerName(e.target.value)}
+                       />
+                       <button onClick={() => saveSquadPlayer(customPlayerName)} className="bg-blue-600 text-white px-6 rounded-xl font-black hover:bg-blue-700 transition-colors shadow-md">SAVE</button>
+                    </div>
+                 </div>
+
+                 {mySignedPlayers.length > 0 && (
+                   <div>
+                      <label className="text-xs font-black uppercase text-gray-400 tracking-widest mb-3 block border-t border-gray-100 pt-4">Your Transfers</label>
+                      <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-1 custom-scrollbar">
+                         {mySignedPlayers.map(pName => (
+                            <button 
+                              key={pName} 
+                              onClick={() => saveSquadPlayer(pName)}
+                              className="bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-600 hover:text-white px-4 py-2 rounded-lg font-bold text-sm transition-colors shadow-sm"
+                            >
+                              {pName}
+                            </button>
+                         ))}
+                      </div>
+                   </div>
+                 )}
+              </div>
+
+              <div className="flex justify-between items-center mt-8 pt-4 border-t border-gray-100">
+                 <button onClick={clearSquadPlayer} className="text-sm font-bold text-red-500 hover:text-red-600 transition-colors">Clear Position</button>
+                 <button onClick={() => setIsLineupModalOpen(false)} className="text-sm font-black text-gray-400 hover:text-gray-800 transition-colors uppercase tracking-widest">Cancel</button>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Breaking News Ticker */}
+      <div className="w-full bg-red-600 text-white overflow-hidden py-2 border-b-4 border-red-700 shadow-md relative z-10 flex items-center">
+        <div className="bg-red-700 font-black px-4 py-2 absolute left-0 z-20 h-full flex items-center shadow-lg uppercase tracking-widest text-sm">🚨 Latest</div>
+        <div className="w-full pl-28">
+           <span className="animate-marquee font-bold tracking-wider">{shuffledTicker || "Welcome to The Super League..."}</span>
+        </div>
+      </div>
+
+      <div className="max-w-5xl mx-auto space-y-6 p-4 md:p-8">
+        <div className="text-center py-4">
+          <h1 className="text-5xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600 drop-shadow-sm">The Super League</h1>
+          <p className="mt-2 text-gray-500 font-medium">Official Tracker, Auctions & Awards</p>
+          {isAdmin && <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-3 border border-blue-200 inline-block px-3 py-1 rounded-full bg-blue-50">Commissioner Access</p>}
+        </div>
+        
+        {/* Nav & Controls */}
+        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-6">
+          
+          {/* DESKTOP NAV */}
+          <div className="hidden md:flex bg-gray-100 p-1.5 rounded-xl w-auto overflow-x-auto border border-gray-200 shadow-inner gap-1">
+            {TABS.map(tab => (
+              <button 
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)} 
+                className={`min-w-[90px] py-2.5 px-3 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2 ${activeTab === tab.id ? 'bg-white text-blue-600 shadow-sm border border-gray-200' : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'}`}
+              >
+                {tab.id === 'ebay' ? (
+                  <img src="/ebay-logo.png" alt="eBay" className="h-4 w-auto object-contain" />
+                ) : (
+                  <span>{tab.icon}</span>
+                )}
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          
+          <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto justify-end">
+            <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-2 rounded-xl shadow-sm">
+               <span className="text-xl">👤</span><span className="text-blue-900 font-black tracking-wide">{managers.find(m => m.id === myManagerId)?.name}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-gray-500 uppercase tracking-wide text-xs font-bold whitespace-nowrap">Season:</label>
+              <select className="p-2.5 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl font-bold text-sm outline-none shadow-sm focus:border-blue-500 transition-colors cursor-pointer" value={selectedSeasonId} onChange={(e) => setSelectedSeasonId(e.target.value)}>
+                <option value="all">🌍 TOTAL (ALL TIME)</option>
+                {seasons.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* ======================= LEAGUE TAB ======================= */}
+        {activeTab === 'league' && (
+           <div className="space-y-6 animate-in fade-in duration-300">
+             <div className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-gray-200 overflow-x-auto">
+               <h2 className="text-2xl font-black mb-6 text-gray-900 flex items-center gap-2">🏆 {isTotal ? 'All-Time Leaderboard' : 'League Standings'}</h2>
+               <table className="w-full text-left border-collapse">
+                 <thead>
+                   <tr className="bg-gray-50 border-y border-gray-200 text-gray-500 text-xs uppercase tracking-widest">
+                     <th className="p-4 font-black rounded-tl-lg">Manager</th>
+                     <th className="p-4 font-black">P</th><th className="p-4 font-black">W</th><th className="p-4 font-black">D</th><th className="p-4 font-black">L</th>
+                     <th className="p-4 font-black">Form</th><th className="p-4 font-black">GD</th><th className="p-4 font-black text-blue-600 rounded-tr-lg">Pts</th>
+                   </tr>
+                 </thead>
+                 <tbody className="divide-y divide-gray-100">
+                   {leagueTable.map((row, index) => (
+                     <tr key={row.id} className="hover:bg-blue-50/50 transition-colors">
+                       <td className="p-4 flex items-center gap-3"><span className="text-gray-400 font-bold text-sm">{index + 1}</span><span className="font-black text-gray-900 text-lg">{row.name}</span></td>
+                       <td className="p-4 text-gray-600 font-medium">{row.p}</td><td className="p-4 text-gray-600 font-medium">{row.w}</td><td className="p-4 text-gray-600 font-medium">{row.d}</td><td className="p-4 text-gray-600 font-medium">{row.l}</td>
+                       <td className="p-4 flex gap-1.5 items-center h-full min-h-[60px]">
+                         {row.form.length > 0 ? row.form.map((f: string, i: number) => ( <span key={i} className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-black text-white shadow-sm ${f === 'W' ? 'bg-green-500' : f === 'D' ? 'bg-gray-400' : 'bg-red-500'}`}>{f}</span> )) : <span className="text-gray-300 font-black">-</span>}
+                       </td>
+                       <td className="p-4 text-gray-700 font-bold">{row.gd > 0 ? `+${row.gd}` : row.gd}</td><td className="p-4 font-black text-blue-600 text-xl">{row.pts}</td>
+                     </tr>
+                   ))}
+                 </tbody>
+               </table>
+             </div>
+ 
+             {!isTotal && (
+               <div className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-gray-200">
+                  <h2 className="text-2xl font-black mb-6 text-gray-900 flex items-center gap-2">⚽ Log Match Result</h2>
+                  <form onSubmit={submitMatch} className="flex flex-col space-y-6">
+                     <div className="flex flex-col md:flex-row justify-between items-center gap-6 bg-gray-50 p-6 rounded-2xl border border-gray-200 shadow-sm">
+                        <div className="flex flex-col w-full md:w-2/5">
+                           <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Home Team</label>
+                           <select className="p-3.5 bg-white border border-gray-300 text-gray-900 rounded-xl outline-none focus:border-blue-500 transition-colors" value={homeTeamId} onChange={(e) => setHomeTeamId(e.target.value)}>
+                              <option value="">Select Manager...</option>{managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                           </select>
+                        </div>
+                        <div className="flex items-center gap-4 w-full md:w-1/5 justify-center">
+                           <input type="number" min="0" className="w-16 p-3 bg-white border border-gray-300 text-gray-900 text-center text-2xl font-black rounded-xl focus:border-blue-500 outline-none" value={homeGoals} onChange={(e) => setHomeGoals(parseInt(e.target.value) || 0)} />
+                           <span className="font-black text-gray-400 text-xl">-</span>
+                           <input type="number" min="0" className="w-16 p-3 bg-white border border-gray-300 text-gray-900 text-center text-2xl font-black rounded-xl focus:border-blue-500 outline-none" value={awayGoals} onChange={(e) => setAwayGoals(parseInt(e.target.value) || 0)} />
+                        </div>
+                        <div className="flex flex-col w-full md:w-2/5">
+                           <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Away Team</label>
+                           <select className="p-3.5 bg-white border border-gray-300 text-gray-900 rounded-xl outline-none focus:border-blue-500 transition-colors" value={awayTeamId} onChange={(e) => setAwayTeamId(e.target.value)}>
+                              <option value="">Select Manager...</option>{managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                           </select>
+                        </div>
+                     </div>
+                     <div className="flex flex-col md:flex-row gap-4 items-end pt-2">
+                       {!isAdmin && ( <div className="flex flex-col w-full md:w-1/3"><label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Admin Password</label><input type="password" placeholder="••••••••" className="p-3.5 bg-white border border-gray-300 text-gray-900 rounded-xl w-full outline-none focus:border-blue-500" value={password} onChange={(e) => setPassword(e.target.value)} /></div> )}
+                       <button type="submit" className={`w-full ${isAdmin ? '' : 'md:w-2/3'} bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl shadow-md transition-all`}>Submit Final Score</button>
+                     </div>
+                  </form>
+               </div>
+             )}
+           </div>
+         )}
+
+        {/* ======================= PROFILES TAB ======================= */}
+        {activeTab === 'profiles' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {managerProfiles.map(profile => {
+                const isMyProfile = profile.id === myManagerId;
+                
+                return (
+                <div key={profile.id} className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden relative">
+                   <div className="bg-gray-100 h-32 absolute top-0 left-0 right-0 z-0 border-b border-gray-200"></div>
+                   
+                   <div className="p-6 relative z-10">
+                     <div className="flex justify-between items-end mb-8 mt-4">
+                        <div className="flex items-center gap-5">
+                           <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-2xl flex items-center justify-center text-white text-5xl shadow-lg font-black border-4 border-white relative">
+                             {profile.name.charAt(0)}
+                           </div>
+                           <div>
+                             <h2 className="text-4xl font-black text-gray-900 drop-shadow-sm">{profile.name}</h2>
+                             <p className="text-xs font-black text-gray-500 uppercase tracking-widest mt-1">Club Manager</p>
+                           </div>
+                        </div>
+                     </div>
+
+                     <div className="grid grid-cols-3 gap-3 mb-8">
+                        <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 text-center shadow-sm">
+                          <p className="text-3xl font-black text-blue-600">{profile.winPct}%</p>
+                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Win Rate</p>
+                        </div>
+                        <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 text-center shadow-sm">
+                          <p className="text-3xl font-black text-gray-800">{profile.w}</p>
+                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Wins</p>
+                        </div>
+                        <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 text-center shadow-sm">
+                          <p className="text-3xl font-black text-gray-800">{profile.p}</p>
+                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Matches</p>
+                        </div>
+                     </div>
+
+                     <div className="mt-8 mb-8">
+                        <div className="flex justify-between items-center mb-4 px-2">
+                          <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest flex items-center gap-2">
+                            <span>📋</span> Starting XI
+                          </h3>
+                          {isMyProfile && <span className="text-[10px] font-black bg-blue-100 text-blue-600 border border-blue-200 px-2 py-1 rounded uppercase tracking-wider animate-pulse">Tap to edit</span>}
+                        </div>
+
+                        <div className="relative w-full aspect-[3/4] max-w-sm mx-auto bg-green-600 rounded-xl border-4 border-white shadow-[inset_0_0_20px_rgba(0,0,0,0.3)] overflow-hidden">
+                           <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 mix-blend-overlay"></div>
+                           <div className="absolute top-0 left-1/4 right-1/4 h-1/6 border-x-2 border-b-2 border-white/40"></div>
+                           <div className="absolute top-0 left-[35%] right-[35%] h-[8%] border-x-2 border-b-2 border-white/40"></div>
+                           <div className="absolute bottom-0 left-1/4 right-1/4 h-1/6 border-x-2 border-t-2 border-white/40"></div>
+                           <div className="absolute bottom-0 left-[35%] right-[35%] h-[8%] border-x-2 border-t-2 border-white/40"></div>
+                           <div className="absolute top-1/2 left-0 right-0 border-t-2 border-white/40"></div>
+                           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 border-2 border-white/40 rounded-full"></div>
+
+                           <div className="absolute inset-0 flex flex-col justify-between py-6 z-10">
+                              <div className="flex justify-evenly px-4">{renderPitchPlayer(profile, 'LW')}{renderPitchPlayer(profile, 'ST')}{renderPitchPlayer(profile, 'RW')}</div>
+                              <div className="flex justify-evenly px-8">{renderPitchPlayer(profile, 'LCM')}{renderPitchPlayer(profile, 'CM')}{renderPitchPlayer(profile, 'RCM')}</div>
+                              <div className="flex justify-evenly px-2">{renderPitchPlayer(profile, 'LB')}{renderPitchPlayer(profile, 'LCB')}{renderPitchPlayer(profile, 'RCB')}{renderPitchPlayer(profile, 'RB')}</div>
+                              <div className="flex justify-center mt-2">{renderPitchPlayer(profile, 'GK')}</div>
+                           </div>
+                        </div>
+                     </div>
+
+                     <div className="border-t border-gray-100 pt-6">
+                        <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-4">Trophy Cabinet</h3>
+                        <div className="flex flex-wrap gap-3">
+                          {profile.achievements.length > 0 ? profile.achievements.map((ach: any, i: number) => (
+                             <div key={i} className="flex items-center gap-2 bg-yellow-50 border border-yellow-200 px-3 py-2 rounded-xl shadow-sm" title={ach.desc}>
+                                <span className="text-xl">{ach.icon}</span>
+                                <span className="text-xs font-black text-yellow-700 uppercase tracking-wide">{ach.title}</span>
+                             </div>
+                          )) : (
+                             <div className="text-xs font-bold text-gray-400 italic">No achievements unlocked yet.</div>
+                          )}
+                        </div>
+                     </div>
+
+                   </div>
+                </div>
+              )})}
+            </div>
+          </div>
+        )}
+
+        {/* ======================= TRANSFERS TAB ======================= */}
+        {activeTab === 'transfers' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+               {managerBalances.map(mb => (
+                  <div key={mb.id} className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm flex flex-col justify-center items-center text-center">
+                     <h4 className="text-gray-500 font-black uppercase tracking-widest text-[10px] mb-2">{mb.name}&apos;s Net</h4>
+                     <p className={`text-2xl lg:text-3xl font-black ${mb.net >= 0 ? 'text-green-500' : 'text-red-500'}`}>{mb.net >= 0 ? '+' : ''}£{mb.net}M</p>
+                  </div>
+               ))}
+            </div>
+
+            {!isTotal && (
+               <div className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-gray-200">
+                  <h2 className="text-2xl font-black mb-6 text-gray-900 flex items-center gap-2">📝 Log Transfer</h2>
+                  <form onSubmit={submitTransfer} className="flex flex-col space-y-6">
+                     <div className="flex flex-col md:flex-row gap-6 bg-gray-50 p-6 rounded-2xl border border-gray-200 shadow-sm">
+                        <div className="flex flex-col w-full md:w-1/3">
+                           <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Player Name</label>
+                           <input type="text" className="p-3.5 bg-white border border-gray-300 text-gray-900 rounded-xl outline-none focus:border-blue-500" value={playerName} onChange={(e) => setPlayerName(e.target.value)} />
+                        </div>
+                        <div className="flex flex-col w-full md:w-1/3">
+                           <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Manager</label>
+                           <select className="p-3.5 bg-white border border-gray-300 text-gray-900 rounded-xl outline-none focus:border-blue-500" value={acquiringManagerId} onChange={(e) => setAcquiringManagerId(e.target.value)}>
+                              <option value="">Select Manager...</option>{managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                           </select>
+                        </div>
+                        <div className="flex flex-col w-full md:w-1/3">
+                           <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Fee (Use - for Money Spent)</label>
+                           <div className="relative">
+                             <span className="absolute left-4 top-3.5 text-gray-400 font-black">£</span>
+                             <input type="number" step="0.1" className="p-3.5 pl-9 bg-white border border-gray-300 text-gray-900 rounded-xl w-full outline-none focus:border-blue-500" value={transferFee} onChange={(e) => setTransferFee(e.target.value === '' ? '' : parseFloat(e.target.value))} />
+                             <span className="absolute right-4 top-3.5 text-gray-400 font-black">M</span>
+                           </div>
+                        </div>
+                     </div>
+                     <div className="flex flex-col md:flex-row gap-4 items-end pt-2">
+                       {!isAdmin && ( <div className="flex flex-col w-full md:w-1/3"><label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Admin Password</label><input type="password" placeholder="••••••••" className="p-3.5 bg-white border border-gray-300 text-gray-900 rounded-xl w-full outline-none" value={password} onChange={(e) => setPassword(e.target.value)} /></div> )}
+                       <button type="submit" className={`w-full ${isAdmin ? '' : 'md:w-2/3'} bg-green-600 hover:bg-green-500 text-white font-black py-4 rounded-xl shadow-md transition-all`}>Confirm Transfer</button>
+                     </div>
+                  </form>
+               </div>
+            )}
+
+            <div className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-gray-200">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                <h2 className="text-2xl font-black text-gray-900">🔄 Transfer Activity {isTotal && '(All Time)'}</h2>
+                <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                  <select className="p-3 bg-gray-50 border border-gray-200 text-gray-900 font-bold rounded-xl text-sm outline-none cursor-pointer w-full sm:w-auto focus:border-blue-500" value={transferManagerFilter} onChange={(e) => setTransferManagerFilter(e.target.value)}><option value="all">👥 All Managers</option>{managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
+                  <select className="p-3 bg-gray-50 border border-gray-200 text-gray-900 font-bold rounded-xl text-sm outline-none cursor-pointer w-full sm:w-auto focus:border-blue-500" value={transferTypeFilter} onChange={(e) => setTransferTypeFilter(e.target.value)}><option value="all">💸 All Types</option><option value="in">📥 Signed (Money Out)</option><option value="out">📤 Sold (Money In)</option></select>
+                </div>
+              </div>
+              <div className="grid gap-4">
+                {displayedTransfers.length > 0 ? (
+                  displayedTransfers.slice().reverse().map((transfer) => (
+                    <div key={transfer.id} className="bg-white border border-gray-200 p-4 rounded-2xl flex flex-col md:flex-row justify-between items-center shadow-sm hover:border-blue-300 transition-colors">
+                      <div className="flex items-center gap-4 w-full md:w-1/3">
+                        <div className="bg-blue-50 text-blue-600 p-3 rounded-full text-xl border border-blue-100">👤</div>
+                        <span className="font-black text-gray-900 text-lg">{transfer.player_name}</span>
+                      </div>
+                      <div className="flex items-center gap-2 w-full md:w-1/3 justify-center text-gray-500 font-bold my-4 md:my-0 text-sm uppercase tracking-wider">
+                        {transfer.transfer_fee < 0 ? 'Signed by ' : 'Sold by '}<span className="font-black text-gray-900">{transfer.manager?.name}</span>
+                      </div>
+                      <div className="w-full md:w-1/3 flex flex-col items-center md:items-end justify-center gap-2">
+                        <span className={`border px-5 py-2.5 rounded-full font-black tracking-widest text-sm shadow-sm ${transfer.transfer_fee >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-600'}`}>
+                          {transfer.transfer_fee > 0 ? '+' : ''}£{transfer.transfer_fee}M
+                        </span>
+                        {isAdmin && (<button onClick={() => deleteTransfer(transfer.id)} className="text-[10px] font-black text-gray-400 hover:text-red-500 uppercase tracking-widest transition-colors mt-1">Admin: Remove</button>)}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-12 bg-gray-50 rounded-2xl border border-dashed border-gray-300"><p className="text-gray-500 font-bold text-lg">No transfers found.</p></div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ======================= eBay TAB ======================= */}
+        {activeTab === 'ebay' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="bg-gray-900 border border-gray-800 text-white p-6 rounded-3xl shadow-xl flex flex-col md:flex-row justify-between items-center gap-4 relative overflow-hidden">
+               <div className="absolute inset-0 bg-gradient-to-r from-blue-900/40 to-gray-900 opacity-50 mix-blend-overlay"></div>
+               <div className="z-10 flex items-center gap-3"><div className="h-4 w-4 bg-red-500 rounded-full animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.8)]"></div><h2 className="text-2xl font-black tracking-widest uppercase">Live Auction House</h2></div>
+               <div className="z-10 font-mono text-xl font-bold bg-gray-950 px-6 py-2.5 rounded-xl border border-gray-700 shadow-inner text-cyan-400">UK: {ukTime}</div>
+            </div>
+            {!isTotal && (
+               <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200">
+                  <h3 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4">Admin: List Player</h3>
+                  <form onSubmit={listAuction} className="flex flex-col md:flex-row items-end gap-4">
+                     <div className={`w-full ${isAdmin ? 'md:w-1/2' : 'md:w-1/3'}`}><label className="text-xs font-black text-gray-500 tracking-widest mb-2 block uppercase">Player Name</label><input type="text" className="w-full p-3.5 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl outline-none focus:border-blue-500" value={auctionPlayerName} onChange={e => setAuctionPlayerName(e.target.value)} /></div>
+                     <div className={`w-full ${isAdmin ? 'md:w-1/2' : 'md:w-1/4'}`}><label className="text-xs font-black text-gray-500 tracking-widest mb-2 block uppercase">Starting Bid (£M)</label><input type="number" step="0.1" className="w-full p-3.5 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl outline-none focus:border-blue-500" value={auctionStartBid} onChange={e => setAuctionStartBid(e.target.value === '' ? '' : parseFloat(e.target.value))} /></div>
+                     {!isAdmin && (<div className="w-full md:w-1/4"><label className="text-xs font-black text-gray-500 tracking-widest mb-2 block uppercase">Password</label><input type="password" placeholder="••••••••" className="w-full p-3.5 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl outline-none" value={password} onChange={e => setPassword(e.target.value)} /></div>)}
+                     <button type="submit" className="w-full md:w-auto bg-gray-900 text-white px-8 py-3.5 rounded-xl font-black hover:bg-gray-800 transition-colors">LIST</button>
+                  </form>
+               </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {currentSeasonAuctions.map(auction => {
+                 const endTimeMs = auction.end_time ? new Date(auction.end_time).getTime() : 0;
+                 const timeLeft = auction.end_time ? Math.max(0, Math.floor((endTimeMs - currentTime) / 1000)) : 0;
+                 const isPending = auction.status === 'pending';
+                 const isActive = auction.status === 'active' && timeLeft > 0;
+                 const isFinished = auction.status === 'active' && auction.end_time && timeLeft === 0;
+                 const isUrgent = isActive && timeLeft <= 10;
+                 
+                 let cardStyle = "p-6 rounded-3xl border-2 transition-all duration-300 relative overflow-hidden ";
+                 if (isPending) cardStyle += "bg-white border-yellow-400 shadow-sm"; 
+                 else if (isActive && !isUrgent) cardStyle += "bg-white border-blue-400 shadow-[0_0_30px_rgba(59,130,246,0.2)]"; 
+                 else if (isUrgent) cardStyle += "bg-white border-red-500 shadow-[0_0_40px_rgba(239,68,68,0.3)] animate-pop"; 
+                 else if (isFinished) cardStyle += "bg-white border-green-500 shadow-sm";
+
+                 return (
+                 <div key={auction.id} className={cardStyle}>
+                    <div className="flex justify-between items-start mb-6">
+                       <h3 className="text-3xl font-black text-gray-900">{auction.player_name}</h3>
+                       {isPending && <span className="bg-yellow-50 text-yellow-700 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border border-yellow-200">Waiting</span>}
+                       {isActive && <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border ${isUrgent ? 'bg-red-600 text-white border-red-500' : 'bg-blue-100 text-blue-600 border-blue-200 animate-pulse'} flex items-center gap-1`}>LIVE ⏳ {timeLeft}s</span>}
+                       {isFinished && <span className="bg-green-100 text-green-700 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border border-green-200">SOLD 🎉</span>}
+                    </div>
+                    <div className={`rounded-2xl p-5 border mb-6 flex justify-between items-center shadow-sm ${isFinished ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+                       <div><p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">{isFinished ? 'Winning Bid' : 'Current Highest Bid'}</p><p className={`text-4xl font-black ${isFinished ? 'text-green-600' : 'text-blue-600'}`}>£{auction.current_bid}M</p></div>
+                       <div className="text-right"><p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">{isFinished ? 'Won By' : 'Held By'}</p><p className="text-lg font-black text-gray-900">{auction.highest_bidder?.name || 'No bids yet'}</p></div>
+                    </div>
+                    {isPending && <button onClick={() => startAuctionTimer(auction.id)} className="w-full bg-yellow-400 text-yellow-900 px-6 py-4 rounded-xl font-black hover:bg-yellow-500 transition-colors uppercase tracking-wider text-sm">Admin: Start 30s Timer</button>}
+                    {isActive && (<div className="flex gap-3"><input type="number" step="0.1" placeholder={`> ${auction.current_bid}`} className="flex-1 p-3.5 bg-white border-2 border-gray-200 text-gray-900 rounded-xl font-black text-lg outline-none focus:border-blue-500" value={bidInputs[auction.id] || ''} onChange={(e) => setBidInputs({...bidInputs, [auction.id]: parseFloat(e.target.value)})} /><button onClick={() => placeBid(auction.id, auction.current_bid, auction.end_time)} className="bg-blue-600 text-white px-10 rounded-xl font-black text-lg hover:bg-blue-700 active:scale-95 transition-transform shadow-md">BID</button></div>)}
+                    {(isFinished || isPending) && <button onClick={() => archiveAuction(auction.id)} className="w-full mt-6 text-[10px] font-black text-gray-400 hover:text-red-500 transition-colors uppercase tracking-widest">Admin: Clear / Hide Auction</button>}
+                 </div>
+              )})}
+            </div>
+          </div>
+        )}
+
+        {/* ======================= HALL OF FAME TAB ======================= */}
+        {activeTab === 'hof' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="bg-yellow-50 border-2 border-yellow-400 text-yellow-900 p-8 rounded-3xl shadow-sm text-center relative overflow-hidden">
+               <div className="absolute inset-0 bg-gradient-to-b from-white/50 to-transparent"></div>
+               <h2 className="text-4xl font-black tracking-widest uppercase mb-3 relative z-10">🏛️ The Hall of Fame</h2>
+               <p className="font-bold relative z-10">Permanent records from across all seasons.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-white border-2 border-gray-100 rounded-3xl p-8 shadow-sm hover:shadow-md relative overflow-hidden group">
+                <div className="absolute -right-10 -top-10 text-9xl opacity-5 group-hover:scale-110 transition-transform duration-500">💰</div><h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Most Expensive Transfer</h3>
+                {hof.mostExpensiveTransfer ? (<><p className="text-4xl font-black text-gray-900 mb-2">{hof.mostExpensiveTransfer.player_name}</p><p className="text-5xl font-black text-blue-600 mb-6 drop-shadow-sm">£{hof.mostExpensiveTransfer.absFee}M</p><div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 flex justify-between items-center"><span className="font-black text-gray-700">{hof.mostExpensiveTransfer.manager?.name}</span><span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{hof.mostExpensiveTransfer.seasonName}</span></div></>) : (<p className="text-gray-400 font-bold py-8">No transfers logged yet.</p>)}
+              </div>
+              <div className="bg-white border-2 border-gray-100 rounded-3xl p-8 shadow-sm hover:shadow-md relative overflow-hidden group">
+                <div className="absolute -right-10 -top-10 text-9xl opacity-5 group-hover:scale-110 transition-transform duration-500">👑</div><h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">The Invincible Season</h3>
+                {hof.maxPointsRecord && hof.maxPointsRecord.points > 0 ? (<><p className="text-4xl font-black text-gray-900 mb-2">{hof.maxPointsRecord.managerName}</p><p className="text-5xl font-black text-yellow-500 mb-6 drop-shadow-sm">{hof.maxPointsRecord.points} PTS</p><div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 flex justify-center items-center"><span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{hof.maxPointsRecord.seasonName}</span></div></>) : (<p className="text-gray-400 font-bold py-8">No completed matches yet.</p>)}
+              </div>
+              <div className="bg-white border-2 border-gray-100 rounded-3xl p-8 shadow-sm hover:shadow-md relative overflow-hidden group">
+                <div className="absolute -right-10 -top-10 text-9xl opacity-5 group-hover:scale-110 transition-transform duration-500">🥊</div><h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Biggest Demolition</h3>
+                {hof.biggestDemolition ? (<><div className="flex justify-between items-center my-6"><p className={`text-2xl font-black ${hof.biggestDemolition.home_goals > hof.biggestDemolition.away_goals ? 'text-gray-900' : 'text-gray-400'}`}>{hof.biggestDemolition.home?.name}</p><p className="text-4xl font-black text-red-600 bg-red-50 px-5 py-2 rounded-2xl border border-red-200">{hof.biggestDemolition.home_goals} - {hof.biggestDemolition.away_goals}</p><p className={`text-2xl font-black ${hof.biggestDemolition.away_goals > hof.biggestDemolition.home_goals ? 'text-gray-900' : 'text-gray-400'}`}>{hof.biggestDemolition.away?.name}</p></div><div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 flex justify-center items-center mt-4"><span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{hof.biggestDemolition.seasonName}</span></div></>) : (<p className="text-gray-400 font-bold py-8">No matches logged yet.</p>)}
+              </div>
+              <div className="bg-white border-2 border-gray-100 rounded-3xl p-8 shadow-sm hover:shadow-md relative overflow-hidden group">
+                <div className="absolute -right-10 -top-10 text-9xl opacity-5 group-hover:scale-110 transition-transform duration-500">🎇</div><h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Highest Scoring Match</h3>
+                {hof.highestScoringGame ? (<><div className="flex justify-between items-center my-6"><p className="text-2xl font-black text-gray-900">{hof.highestScoringGame.home?.name}</p><div className="text-center"><p className="text-4xl font-black text-indigo-600 bg-indigo-50 px-5 py-2 rounded-2xl border border-indigo-200 mb-2">{hof.highestScoringGame.home_goals} - {hof.highestScoringGame.away_goals}</p><p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">{hof.highestScoringGame.totalGoals} Goals</p></div><p className="text-2xl font-black text-gray-900">{hof.highestScoringGame.away?.name}</p></div><div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 flex justify-center items-center mt-4"><span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{hof.highestScoringGame.seasonName}</span></div></>) : (<p className="text-gray-400 font-bold py-8">No matches logged yet.</p>)}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ======================= H2H TAB ======================= */}
+        {activeTab === 'h2h' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-gray-200">
+               <h2 className="text-2xl font-black mb-8 text-gray-900 flex items-center gap-2">⚔️ Head-to-Head Records</h2>
+               <div className="flex flex-col md:flex-row justify-center items-center gap-6 mb-12">
+                  <select className="p-4 bg-gray-50 border-2 border-gray-200 text-gray-900 rounded-2xl font-black text-xl outline-none cursor-pointer w-full md:w-1/3 text-center focus:border-blue-500 transition-colors" value={h2hManagerA} onChange={(e) => setH2hManagerA(e.target.value)}><option value="">Select Manager</option>{managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
+                  <div className="text-3xl font-black text-gray-300 italic">VS</div>
+                  <select className="p-4 bg-gray-50 border-2 border-gray-200 text-gray-900 rounded-2xl font-black text-xl outline-none cursor-pointer w-full md:w-1/3 text-center focus:border-blue-500 transition-colors" value={h2hManagerB} onChange={(e) => setH2hManagerB(e.target.value)}><option value="">Select Manager</option>{managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
+               </div>
+               {h2hManagerA && h2hManagerB && h2hManagerA !== h2hManagerB ? (
+                 <div className="space-y-10 animate-in slide-in-from-bottom-4">
+                   <div className="grid grid-cols-3 gap-4 text-center items-center bg-gray-900 border border-gray-800 text-white rounded-3xl p-8 shadow-md"><div><p className="text-5xl font-black text-blue-400">{h2hStats.aWins}</p><p className="text-[10px] uppercase tracking-widest text-gray-400 mt-2 font-black">Wins</p></div><div className="border-x border-gray-700"><p className="text-5xl font-black text-gray-300">{h2hStats.d}</p><p className="text-[10px] uppercase tracking-widest text-gray-400 mt-2 font-black">Draws</p></div><div><p className="text-5xl font-black text-blue-400">{h2hStats.bWins}</p><p className="text-[10px] uppercase tracking-widest text-gray-400 mt-2 font-black">Wins</p></div></div>
+                   <div className="flex justify-between items-center px-4"><div className="text-center"><p className="text-3xl font-black text-gray-900">{h2hStats.aGoals}</p><p className="text-[10px] uppercase tracking-widest text-gray-500 font-black">Goals</p></div><div className="text-center"><p className="text-[10px] font-black uppercase tracking-widest bg-blue-100 border border-blue-200 text-blue-700 px-4 py-1.5 rounded-full">{h2hStats.p} Matches Played</p></div><div className="text-center"><p className="text-3xl font-black text-gray-900">{h2hStats.bGoals}</p><p className="text-[10px] uppercase tracking-widest text-gray-500 font-black">Goals</p></div></div>
+                   {h2hStats.matches.length > 0 && ( <div className="mt-8 border-t border-gray-200 pt-8"><h3 className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-6">Match History (Recent First)</h3><div className="grid gap-4">{h2hStats.matches.map(m => ( <div key={m.id} className="bg-gray-50 p-5 rounded-2xl border border-gray-200 flex justify-between items-center shadow-sm"><span className={`w-1/3 text-right font-black text-lg ${m.home_goals > m.away_goals ? 'text-gray-900' : 'text-gray-400'}`}>{m.home?.name}</span><span className="w-1/3 text-center font-black bg-white py-1.5 px-4 rounded-xl border border-gray-200 text-blue-600">{m.home_goals} - {m.away_goals}</span><span className={`w-1/3 text-left font-black text-lg ${m.away_goals > m.home_goals ? 'text-gray-900' : 'text-gray-400'}`}>{m.away?.name}</span></div> ))}</div></div> )}
+                 </div>
+               ) : h2hManagerA === h2hManagerB && h2hManagerA !== '' ? (<div className="text-center text-red-500 font-bold py-10">You cannot select the same manager twice.</div>) : (<div className="text-center text-gray-400 font-bold py-12 border-2 border-dashed border-gray-300 rounded-3xl">Select two managers above to view their history.</div>)}
+            </div>
+          </div>
+        )}
+
+        {/* ======================= AWARDS TAB ======================= */}
+        {activeTab === 'awards' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="bg-yellow-50 border-2 border-yellow-300 p-8 rounded-3xl shadow-sm text-center relative overflow-hidden">
+               <h2 className="text-3xl font-black tracking-widest uppercase mb-2 text-yellow-700 relative z-10">🏆 Nominations</h2>
+               <p className="font-bold text-yellow-800/80 text-sm relative z-10">Nominate 2 players. Cast 1 vote for another team.</p>
+            </div>
+            {!isTotal && (
+               <div className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-gray-200">
+                  <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4">Nominate a Player</h3>
+                  <form onSubmit={submitNomination} className="flex flex-col md:flex-row items-end gap-4">
+                     <div className="w-full md:w-3/4"><label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 block">Player Name</label><input type="text" placeholder="Who deserves the award?" className="w-full p-3.5 bg-gray-50 border border-gray-200 focus:border-yellow-400 rounded-xl outline-none font-bold text-gray-900 transition-colors" value={nominationName} onChange={e => setNominationName(e.target.value)} /></div>
+                     <button type="submit" className="w-full md:w-1/4 bg-yellow-400 hover:bg-yellow-500 text-yellow-900 px-6 py-4 rounded-xl font-black transition-colors shadow-md">NOMINATE</button>
+                  </form>
+               </div>
+            )}
+            <div className="grid gap-4">
+              {currentSeasonNominations.map(nom => ({ ...nom, voteCount: votes.filter(v => v.nomination_id === nom.id).length })).sort((a, b) => b.voteCount - a.voteCount).map(nom => {
+                   const hasVotedThisSeason = votes.some(v => v.voter_id === myManagerId && v.season_id === nom.season_id);
+                   const isOwnPlayer = nom.manager_id === myManagerId;
+                   const iVotedForThis = votes.some(v => v.nomination_id === nom.id && v.voter_id === myManagerId);
+                   return (
+                   <div key={nom.id} className="bg-white border border-gray-200 p-6 rounded-3xl flex flex-col md:flex-row justify-between items-center shadow-sm">
+                      <div className="w-full md:w-1/3"><h3 className="text-2xl font-black text-gray-900">{nom.player_name}</h3><p className="text-gray-500 font-bold text-[10px] uppercase tracking-widest mt-1">By {nom.manager?.name}</p></div>
+                      <div className="w-full md:w-1/3 flex justify-center my-6 md:my-0"><div className="bg-yellow-50 border border-yellow-200 px-6 py-2.5 rounded-full flex items-center gap-3"><span className="text-xl drop-shadow-sm">⭐️</span><span className="text-2xl font-black text-yellow-600">{nom.voteCount}</span></div></div>
+                      <div className="w-full md:w-1/3 flex flex-col items-center md:items-end justify-center gap-3">
+                         {isTotal ? (<span className="text-gray-500 font-bold italic">Voting closed</span>) : iVotedForThis ? (<span className="bg-green-100 text-green-700 px-8 py-3 rounded-xl font-black flex items-center gap-2 border border-green-200">✅ Voted</span>) : (<button onClick={() => castVote(nom)} disabled={isOwnPlayer || hasVotedThisSeason} className={`w-full md:max-w-[160px] px-8 py-3.5 rounded-xl font-black transition-all text-sm uppercase tracking-wider ${isOwnPlayer ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' : hasVotedThisSeason ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' : 'bg-gray-900 text-white hover:bg-gray-800 active:scale-95 shadow-md'}`}>{isOwnPlayer ? 'Your Player' : hasVotedThisSeason ? 'Vote Cast' : 'VOTE'}</button>)}
+                         {isAdmin && (<button onClick={() => deleteNomination(nom.id)} className="text-[10px] font-black text-gray-400 hover:text-red-500 uppercase tracking-widest transition-colors mt-1">Admin: Remove</button>)}
+                      </div>
+                   </div>
+              )})}
+            </div>
+          </div>
+        )}
+
+      </div>
+
+      {/* MOBILE BOTTOM NAVIGATION (Fixed) */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-gray-200 flex justify-around items-center px-1 py-2 z-50 overflow-x-auto safe-area-pb shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+        {TABS.map(tab => (
+           <button 
+             key={tab.id}
+             onClick={() => setActiveTab(tab.id)} 
+             className={`flex flex-col items-center justify-center w-[70px] min-w-[70px] py-1 gap-1 transition-all rounded-xl ${activeTab === tab.id ? 'text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}
+           >
+             {tab.id === 'ebay' ? (
+                <img src="/ebay-logo.png" alt="eBay" className="h-6 w-auto object-contain mb-0.5" />
+             ) : (
+                <span className="text-xl mb-0.5">{tab.icon}</span>
+             )}
+             <span className="text-[9px] font-black uppercase tracking-widest">{tab.label}</span>
+             {/* Active Indicator dot */}
+             <div className={`h-1 w-1 rounded-full mt-0.5 ${activeTab === tab.id ? 'bg-blue-600' : 'bg-transparent'}`}></div>
+           </button>
+        ))}
+      </div>
+
+    </div>
+  );
+}
