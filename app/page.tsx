@@ -10,6 +10,14 @@ const PASSWORDS: Record<string, string> = {
   "Sukhi": "Trueee"
 };
 
+// Club Logos Dictionary
+const CLUB_LOGOS: Record<string, string> = {
+  "Kola": "https://upload.wikimedia.org/wikipedia/en/e/eb/Manchester_City_FC_badge.svg",
+  "Gurpal": "https://upload.wikimedia.org/wikipedia/en/c/cc/Chelsea_FC.svg",
+  "Rajat": "https://upload.wikimedia.org/wikipedia/en/5/53/Arsenal_FC.svg",
+  "Sukhi": "https://upload.wikimedia.org/wikipedia/en/0/0c/Liverpool_FC.svg"
+};
+
 const TABS = [
   { id: 'league', icon: '⚽', label: 'League' },
   { id: 'h2h', icon: '⚔️', label: 'H2H' },
@@ -682,7 +690,13 @@ export default function Home() {
                  <tbody className="divide-y divide-gray-100">
                    {leagueTable.map((row, index) => (
                      <tr key={row.id} className="hover:bg-blue-50/50 transition-colors">
-                       <td className="p-4 flex items-center gap-3"><span className="text-gray-400 font-bold text-sm">{index + 1}</span><span className="font-black text-gray-900 text-lg">{row.name}</span></td>
+                       <td className="p-4 flex items-center gap-3">
+                         <span className="text-gray-400 font-bold text-sm w-4">{index + 1}</span>
+                         {CLUB_LOGOS[row.name] && (
+                           <img src={CLUB_LOGOS[row.name]} alt={`${row.name} club badge`} className="w-6 h-6 object-contain drop-shadow-sm" />
+                         )}
+                         <span className="font-black text-gray-900 text-lg">{row.name}</span>
+                       </td>
                        <td className="p-4 text-gray-600 font-medium">{row.p}</td><td className="p-4 text-gray-600 font-medium">{row.w}</td><td className="p-4 text-gray-600 font-medium">{row.d}</td><td className="p-4 text-gray-600 font-medium">{row.l}</td>
                        <td className="p-4 flex gap-1.5 items-center h-full min-h-[60px]">
                          {row.form.length > 0 ? row.form.map((f: string, i: number) => ( <span key={i} className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-black text-white shadow-sm ${f === 'W' ? 'bg-green-500' : f === 'D' ? 'bg-gray-400' : 'bg-red-500'}`}>{f}</span> )) : <span className="text-gray-300 font-black">-</span>}
@@ -746,9 +760,15 @@ export default function Home() {
                    <div className="p-6 relative z-10">
                      <div className="flex justify-between items-end mb-8 mt-4">
                         <div className="flex items-center gap-5">
-                           <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-2xl flex items-center justify-center text-white text-5xl shadow-lg font-black border-4 border-white relative">
-                             {profile.name.charAt(0)}
-                           </div>
+                           {CLUB_LOGOS[profile.name] ? (
+                             <div className="w-24 h-24 bg-white rounded-2xl flex items-center justify-center shadow-lg border-4 border-gray-50 relative overflow-hidden p-2">
+                               <img src={CLUB_LOGOS[profile.name]} alt={`${profile.name} Club`} className="w-full h-full object-contain" />
+                             </div>
+                           ) : (
+                             <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-2xl flex items-center justify-center text-white text-5xl shadow-lg font-black border-4 border-white relative">
+                               {profile.name.charAt(0)}
+                             </div>
+                           )}
                            <div>
                              <h2 className="text-4xl font-black text-gray-900 drop-shadow-sm">{profile.name}</h2>
                              <p className="text-xs font-black text-gray-500 uppercase tracking-widest mt-1">Club Manager</p>
