@@ -22,6 +22,35 @@ const TABS = [
 
 type TabType = typeof TABS[number]['id'];
 
+// Squad Formations Dictionary
+const FORMATIONS: Record<string, string[][]> = {
+  '4-3-3': [
+    ['LW', 'ST', 'RW'],
+    ['LCM', 'CM', 'RCM'],
+    ['LB', 'LCB', 'RCB', 'RB'],
+    ['GK']
+  ],
+  '4-4-2': [
+    ['LS', 'RS'],
+    ['LM', 'LCM', 'RCM', 'RM'],
+    ['LB', 'LCB', 'RCB', 'RB'],
+    ['GK']
+  ],
+  '4-2-3-1': [
+    ['ST'],
+    ['LAM', 'CAM', 'RAM'],
+    ['LDM', 'RDM'],
+    ['LB', 'LCB', 'RCB', 'RB'],
+    ['GK']
+  ],
+  '3-5-2': [
+    ['LS', 'RS'],
+    ['LM', 'LCM', 'CAM', 'RCM', 'RM'],
+    ['LCB', 'CB', 'RCB'],
+    ['GK']
+  ]
+};
+
 export default function Home() {
   // Authentication States
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -286,23 +315,11 @@ export default function Home() {
 
     const seasonManagerPoints: Record<string, number> = {};
     matches.forEach(match => {
-      const sId = match.season_id; 
-      const keyHome = `${sId}_${match.home_manager_id}`; 
-      const keyAway = `${sId}_${match.away_manager_id}`;
-      
+      const sId = match.season_id; const keyHome = `${sId}_${match.home_manager_id}`; const keyAway = `${sId}_${match.away_manager_id}`;
       if (!seasonManagerPoints[keyHome]) seasonManagerPoints[keyHome] = 0;
       if (!seasonManagerPoints[keyAway]) seasonManagerPoints[keyAway] = 0;
-      
-      if (match.home_goals > match.away_goals) {
-        seasonManagerPoints[keyHome] += 3; 
-      } else if (match.home_goals < match.away_goals) {
-        seasonManagerPoints[keyAway] += 3; 
-      } else { 
-        seasonManagerPoints[keyHome] += 1; 
-        seasonManagerPoints[keyAway] += 1; 
-      }
+      if (match.home_goals > match.away_goals) seasonManagerPoints[keyHome] += 3; else if (match.home_goals < match.away_goals) seasonManagerPoints[keyAway] += 3; else { seasonManagerPoints[keyHome] += 1; seasonManagerPoints[keyAway] += 1; }
     });
-
     Object.entries(seasonManagerPoints).forEach(([key, pts]) => {
       if (pts > maxPts) { maxPts = pts; const [sId, mId] = key.split('_'); maxPointsRecord = { managerName: managers.find(x => x.id === mId)?.name, seasonName: seasons.find(x => x.id === sId)?.name, points: pts }; }
     });
@@ -394,9 +411,10 @@ export default function Home() {
   };
 
   const saveSquadPlayer = async (nameToSave: string) => {
-    if (!nameToSave) return;
+    const finalName = nameToSave.trim();
+    if (!finalName) return;
     await supabase.from('lineups').delete().match({ manager_id: myManagerId, position: activeLineupPosition });
-    await supabase.from('lineups').insert([{ manager_id: myManagerId, position: activeLineupPosition, player_name: nameToSave }]);
+    await supabase.from('lineups').insert([{ manager_id: myManagerId, position: activeLineupPosition, player_name: finalName }]);
     setIsLineupModalOpen(false);
     setCustomPlayerName('');
   };
@@ -404,6 +422,11 @@ export default function Home() {
   const clearSquadPlayer = async () => {
     await supabase.from('lineups').delete().match({ manager_id: myManagerId, position: activeLineupPosition });
     setIsLineupModalOpen(false);
+  };
+
+  const changeFormation = async (newFormation: string) => {
+    await supabase.from('lineups').delete().match({ manager_id: myManagerId, position: 'FORMATION' });
+    await supabase.from('lineups').insert([{ manager_id: myManagerId, position: 'FORMATION', player_name: newFormation }]);
   };
 
   const mySignedPlayers = Array.from(new Set(
@@ -421,6 +444,7 @@ export default function Home() {
 
     return (
       <div 
+        key={pos}
         onClick={() => handlePositionClick(manager.id, pos)}
         className={`relative flex flex-col items-center justify-start w-[50px] h-[72px] sm:w-[60px] sm:h-[84px] ${cardBg} rounded-t-sm rounded-b-lg shadow-md ${isMine ? 'cursor-pointer hover:scale-110 hover:z-20 transition-transform group' : ''}`}
       >
@@ -509,16 +533,26 @@ export default function Home() {
               <div className="space-y-6">
                  <div>
                     <label className="text-xs font-black uppercase text-gray-400 tracking-widest mb-2 block">Custom Input</label>
-                    <div className="flex gap-2">
+                    <form 
+                      onSubmit={(e) => { e.preventDefault(); saveSquadPlayer(customPlayerName); }} 
+                      className="flex gap-2"
+                    >
                        <input 
                          type="text" 
                          placeholder="Enter player name..." 
                          className="flex-1 p-3 bg-white border border-gray-200 text-gray-900 rounded-xl font-bold outline-none focus:border-blue-500 transition-colors"
                          value={customPlayerName}
                          onChange={(e) => setCustomPlayerName(e.target.value)}
+                         autoFocus
                        />
-                       <button onClick={() => saveSquadPlayer(customPlayerName)} className="bg-blue-600 text-white px-6 rounded-xl font-black hover:bg-blue-700 transition-colors shadow-md">SAVE</button>
-                    </div>
+                       <button 
+                         type="submit" 
+                         disabled={!customPlayerName.trim()}
+                         className="bg-blue-600 disabled:bg-blue-300 text-white px-6 rounded-xl font-black hover:bg-blue-700 transition-colors shadow-md"
+                       >
+                         SAVE
+                       </button>
+                    </form>
                  </div>
 
                  {mySignedPlayers.length > 0 && (
@@ -665,6 +699,11 @@ export default function Home() {
               {managerProfiles.map(profile => {
                 const isMyProfile = profile.id === myManagerId;
                 
+                // Get Formation
+                const formationEntry = lineups.find(l => l.manager_id === profile.id && l.position === 'FORMATION');
+                const currentFormation = formationEntry ? formationEntry.player_name : '4-3-3';
+                const formationRows = FORMATIONS[currentFormation] || FORMATIONS['4-3-3'];
+                
                 return (
                 <div key={profile.id} className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden relative">
                    <div className="bg-gray-100 h-32 absolute top-0 left-0 right-0 z-0 border-b border-gray-200"></div>
@@ -702,7 +741,22 @@ export default function Home() {
                           <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest flex items-center gap-2">
                             <span>📋</span> Starting XI
                           </h3>
-                          {isMyProfile && <span className="text-[10px] font-black bg-blue-100 text-blue-600 border border-blue-200 px-2 py-1 rounded uppercase tracking-wider animate-pulse">Tap to edit</span>}
+                          
+                          {/* FORMATION SELECTOR */}
+                          {isMyProfile ? (
+                            <div className="flex items-center gap-2">
+                               <select 
+                                 className="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-2 py-1.5 rounded outline-none cursor-pointer uppercase shadow-sm"
+                                 value={currentFormation}
+                                 onChange={(e) => changeFormation(e.target.value)}
+                               >
+                                 {Object.keys(FORMATIONS).map(f => <option key={f} value={f}>{f}</option>)}
+                               </select>
+                               <span className="text-[10px] font-black bg-blue-100 text-blue-600 border border-blue-200 px-2 py-1 rounded uppercase tracking-wider animate-pulse hidden sm:inline-block">Tap to edit</span>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] font-black bg-gray-100 text-gray-500 border border-gray-200 px-3 py-1 rounded uppercase tracking-wider">{currentFormation}</span>
+                          )}
                         </div>
 
                         <div className="relative w-full aspect-[3/4] max-w-sm mx-auto bg-green-600 rounded-xl border-4 border-white shadow-[inset_0_0_20px_rgba(0,0,0,0.3)] overflow-hidden">
@@ -715,10 +769,11 @@ export default function Home() {
                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 border-2 border-white/40 rounded-full"></div>
 
                            <div className="absolute inset-0 flex flex-col justify-between py-6 z-10">
-                              <div className="flex justify-evenly px-4">{renderPitchPlayer(profile, 'LW')}{renderPitchPlayer(profile, 'ST')}{renderPitchPlayer(profile, 'RW')}</div>
-                              <div className="flex justify-evenly px-8">{renderPitchPlayer(profile, 'LCM')}{renderPitchPlayer(profile, 'CM')}{renderPitchPlayer(profile, 'RCM')}</div>
-                              <div className="flex justify-evenly px-2">{renderPitchPlayer(profile, 'LB')}{renderPitchPlayer(profile, 'LCB')}{renderPitchPlayer(profile, 'RCB')}{renderPitchPlayer(profile, 'RB')}</div>
-                              <div className="flex justify-center mt-2">{renderPitchPlayer(profile, 'GK')}</div>
+                              {formationRows.map((row, rowIndex) => (
+                                 <div key={rowIndex} className={`flex justify-evenly px-2 w-full ${row.length >= 5 ? 'gap-0.5' : ''}`}>
+                                    {row.map(pos => renderPitchPlayer(profile, pos))}
+                                 </div>
+                              ))}
                            </div>
                         </div>
                      </div>
