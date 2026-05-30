@@ -27,14 +27,18 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   
   // App States
-  const [activeTab, setActiveTab] = useState<'league' | 'transfers' | 'ebay' | 'awards'>('league');
+  const [activeTab, setActiveTab] = useState<'league' | 'transfers' | 'ebay' | 'awards' | 'profiles' | 'h2h'>('league');
   const [selectedSeasonId, setSelectedSeasonId] = useState<string>('all');
-  const [myManagerId, setMyManagerId] = useState(''); // Set automatically upon login
-  const [password, setPassword] = useState(''); // For Admin Actions
+  const [myManagerId, setMyManagerId] = useState(''); 
+  const [password, setPassword] = useState(''); 
   
   // Transfer Filter States
   const [transferManagerFilter, setTransferManagerFilter] = useState<string>('all');
   const [transferTypeFilter, setTransferTypeFilter] = useState<string>('all');
+
+  // H2H States
+  const [h2hManagerA, setH2hManagerA] = useState('');
+  const [h2hManagerB, setH2hManagerB] = useState('');
 
   // Time States
   const [ukTime, setUkTime] = useState<string>('');
@@ -90,7 +94,6 @@ export default function Home() {
 
     fetchData();
 
-    // LIVE WebSockets
     const channel = supabase.channel('realtime-updates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'auctions' }, fetchAuctions)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'award_nominations' }, fetchAwards)
@@ -118,7 +121,6 @@ export default function Home() {
     }
   };
 
-  // --- ADMIN CHECK ---
   const isAdmin = managers.find(m => m.id === myManagerId)?.name === 'Gurpal';
 
   // Filter Data Base (By Season)
@@ -138,7 +140,7 @@ export default function Home() {
     return matchManager && matchType;
   });
 
-  // Calculations
+  // Calculate League Table
   const calculateTable = () => {
     let table: Record<string, any> = {};
     managers.forEach(m => { table[m.id] = { id: m.id, name: m.name, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0 }; });
@@ -165,6 +167,67 @@ export default function Home() {
     const net = currentSeasonTransfers.filter(t => t.manager_id === m.id).reduce((sum, t) => sum + Number(t.transfer_fee), 0);
     return { ...m, net };
   });
+
+  // Calculate Profiles Stats
+  const managerProfiles = managers.map(m => {
+    const mMatches = currentSeasonMatches.filter(match => match.home_manager_id === m.id || match.away_manager_id === m.id);
+    let w=0, d=0, l=0;
+    let maxGd = -999;
+    let minGd = 999;
+    let biggestWin = null;
+    let worstDefeat = null;
+
+    mMatches.forEach(match => {
+      const isHome = match.home_manager_id === m.id;
+      const oppName = isHome ? match.away?.name : match.home?.name;
+      const mGoals = isHome ? match.home_goals : match.away_goals;
+      const oppGoals = isHome ? match.away_goals : match.home_goals;
+      const gd = mGoals - oppGoals;
+
+      if(gd > 0) w++;
+      else if(gd < 0) l++;
+      else d++;
+
+      if(gd > maxGd && gd > 0) { maxGd = gd; biggestWin = `${mGoals}-${oppGoals} vs ${oppName || 'Unknown'}`; }
+      if(gd < minGd && gd < 0) { minGd = gd; worstDefeat = `${mGoals}-${oppGoals} vs ${oppName || 'Unknown'}`; }
+    });
+
+    const winPct = mMatches.length > 0 ? Math.round((w / mMatches.length) * 100) : 0;
+    const mTransfers = currentSeasonTransfers.filter(t => t.manager_id === m.id);
+    
+    // Most expensive signing based on absolute transfer fee
+    let biggestTransfer = null;
+    if (mTransfers.length > 0) {
+      biggestTransfer = mTransfers.reduce((prev, current) =>
+        Math.abs(Number(current.transfer_fee)) > Math.abs(Number(prev.transfer_fee)) ? current : prev
+      );
+    }
+
+    return { ...m, p: mMatches.length, w, d, l, winPct, biggestWin: maxGd > 0 ? biggestWin : 'N/A', worstDefeat: minGd < 0 ? worstDefeat : 'N/A', biggestTransfer };
+  });
+
+  // Calculate H2H Stats
+  let h2hStats = { p: 0, aWins: 0, bWins: 0, d: 0, aGoals: 0, bGoals: 0, matches: [] as any[] };
+  if (h2hManagerA && h2hManagerB && h2hManagerA !== h2hManagerB) {
+    const h2hMatches = currentSeasonMatches.filter(m => 
+      (m.home_manager_id === h2hManagerA && m.away_manager_id === h2hManagerB) ||
+      (m.home_manager_id === h2hManagerB && m.away_manager_id === h2hManagerA)
+    );
+    h2hStats.p = h2hMatches.length;
+    h2hStats.matches = h2hMatches.slice().reverse(); // Show newest first
+
+    h2hMatches.forEach(m => {
+      const aIsHome = m.home_manager_id === h2hManagerA;
+      const aG = aIsHome ? m.home_goals : m.away_goals;
+      const bG = aIsHome ? m.away_goals : m.home_goals;
+      h2hStats.aGoals += aG;
+      h2hStats.bGoals += bG;
+
+      if(aG > bG) h2hStats.aWins++;
+      else if(bG > aG) h2hStats.bWins++;
+      else h2hStats.d++;
+    });
+  }
 
   // Database Submissions
   const submitMatch = async (e: React.FormEvent) => {
@@ -193,7 +256,6 @@ export default function Home() {
     }
   };
 
-  // --- Admin Remove Transfer ---
   const deleteTransfer = async (transferId: string) => {
     if (!isAdmin) return;
     const confirmDelete = window.confirm("Commissioner Action: Are you sure you want to completely remove this transfer?");
@@ -258,7 +320,6 @@ export default function Home() {
     await supabase.from('award_votes').insert([{ nomination_id: nomination.id, voter_id: myManagerId, season_id: nomination.season_id }]);
   };
 
-  // --- Admin Remove Nomination ---
   const deleteNomination = async (nominationId: string) => {
     if (!isAdmin) return;
     const confirmDelete = window.confirm("Commissioner Action: Are you sure you want to remove this nomination?");
@@ -333,8 +394,10 @@ export default function Home() {
         
         {/* Global Navigation & Controls */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="flex bg-gray-100 p-1 rounded-xl w-full md:w-auto overflow-x-auto">
+          <div className="flex bg-gray-100 p-1 rounded-xl w-full md:w-auto overflow-x-auto custom-scrollbar">
             <button onClick={() => setActiveTab('league')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all ${activeTab === 'league' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>⚽ League</button>
+            <button onClick={() => setActiveTab('h2h')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all ${activeTab === 'h2h' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>⚔️ H2H</button>
+            <button onClick={() => setActiveTab('profiles')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all ${activeTab === 'profiles' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>🛡️ Profiles</button>
             <button onClick={() => setActiveTab('transfers')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all ${activeTab === 'transfers' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>🤝 Transfers</button>
             <button onClick={() => setActiveTab('ebay')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2 ${activeTab === 'ebay' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>🛒 eBay</button>
             <button onClick={() => setActiveTab('awards')} className={`flex-1 min-w-[90px] py-2 px-3 rounded-lg font-bold text-sm transition-all ${activeTab === 'awards' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>🏆 Awards</button>
@@ -419,6 +482,155 @@ export default function Home() {
            </div>
          )}
 
+        {/* ======================= H2H TAB ======================= */}
+        {activeTab === 'h2h' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-200">
+               <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center gap-2">⚔️ Head-to-Head Records {isTotal && '(All-Time)'}</h2>
+               
+               <div className="flex flex-col md:flex-row justify-center items-center gap-6 mb-10">
+                  <select 
+                    className="p-4 bg-gray-50 border-2 border-gray-200 text-gray-900 rounded-xl font-black text-xl outline-none cursor-pointer w-full md:w-1/3 text-center focus:border-blue-500 transition-colors"
+                    value={h2hManagerA}
+                    onChange={(e) => setH2hManagerA(e.target.value)}
+                  >
+                    <option value="">Select Manager</option>
+                    {managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+
+                  <div className="text-3xl font-black text-gray-300 italic">VS</div>
+
+                  <select 
+                    className="p-4 bg-gray-50 border-2 border-gray-200 text-gray-900 rounded-xl font-black text-xl outline-none cursor-pointer w-full md:w-1/3 text-center focus:border-blue-500 transition-colors"
+                    value={h2hManagerB}
+                    onChange={(e) => setH2hManagerB(e.target.value)}
+                  >
+                    <option value="">Select Manager</option>
+                    {managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+               </div>
+
+               {h2hManagerA && h2hManagerB && h2hManagerA !== h2hManagerB ? (
+                 <div className="space-y-8 animate-in slide-in-from-bottom-4">
+                   <div className="grid grid-cols-3 gap-4 text-center items-center bg-gray-900 text-white rounded-2xl p-6 shadow-lg">
+                      <div>
+                        <p className="text-4xl font-black">{h2hStats.aWins}</p>
+                        <p className="text-xs uppercase tracking-widest text-gray-400 mt-1">Wins</p>
+                      </div>
+                      <div className="border-x border-gray-700">
+                        <p className="text-4xl font-black text-gray-400">{h2hStats.d}</p>
+                        <p className="text-xs uppercase tracking-widest text-gray-500 mt-1">Draws</p>
+                      </div>
+                      <div>
+                        <p className="text-4xl font-black">{h2hStats.bWins}</p>
+                        <p className="text-xs uppercase tracking-widest text-gray-400 mt-1">Wins</p>
+                      </div>
+                   </div>
+
+                   <div className="flex justify-between items-center px-4">
+                     <div className="text-center">
+                        <p className="text-2xl font-bold text-gray-800">{h2hStats.aGoals}</p>
+                        <p className="text-xs uppercase tracking-widest text-gray-500 font-bold">Goals Scored</p>
+                     </div>
+                     <div className="text-center">
+                        <p className="text-xs font-black uppercase tracking-widest bg-blue-100 text-blue-600 px-3 py-1 rounded-full">{h2hStats.p} Matches Played</p>
+                     </div>
+                     <div className="text-center">
+                        <p className="text-2xl font-bold text-gray-800">{h2hStats.bGoals}</p>
+                        <p className="text-xs uppercase tracking-widest text-gray-500 font-bold">Goals Scored</p>
+                     </div>
+                   </div>
+
+                   {h2hStats.matches.length > 0 && (
+                     <div className="mt-8 border-t pt-8">
+                       <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Match History (Recent First)</h3>
+                       <div className="grid gap-3">
+                         {h2hStats.matches.map(m => (
+                           <div key={m.id} className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex justify-between items-center">
+                             <span className={`w-1/3 text-right font-bold ${m.home_goals > m.away_goals ? 'text-gray-900' : 'text-gray-400'}`}>{m.home?.name}</span>
+                             <span className="w-1/3 text-center font-black bg-white py-1 px-4 rounded-lg border shadow-sm">
+                               {m.home_goals} - {m.away_goals}
+                             </span>
+                             <span className={`w-1/3 text-left font-bold ${m.away_goals > m.home_goals ? 'text-gray-900' : 'text-gray-400'}`}>{m.away?.name}</span>
+                           </div>
+                         ))}
+                       </div>
+                     </div>
+                   )}
+                 </div>
+               ) : h2hManagerA === h2hManagerB && h2hManagerA !== '' ? (
+                 <div className="text-center text-red-500 font-bold py-10">You cannot select the same manager twice.</div>
+               ) : (
+                 <div className="text-center text-gray-400 font-bold py-10 border-2 border-dashed rounded-xl">Select two managers above to view their history.</div>
+               )}
+            </div>
+          </div>
+        )}
+
+        {/* ======================= PROFILES TAB ======================= */}
+        {activeTab === 'profiles' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {managerProfiles.map(profile => (
+                <div key={profile.id} className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden relative">
+                   <div className="bg-gray-900 h-24 absolute top-0 left-0 right-0 z-0 opacity-5"></div>
+                   
+                   <div className="p-6 relative z-10">
+                     <div className="flex justify-between items-end mb-6">
+                        <div className="flex items-center gap-4">
+                           <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center text-white text-3xl shadow-lg font-black">
+                             {profile.name.charAt(0)}
+                           </div>
+                           <div>
+                             <h2 className="text-3xl font-black text-gray-900">{profile.name}</h2>
+                             <p className="text-sm font-bold text-gray-400 uppercase tracking-widest mt-1">Club Manager</p>
+                           </div>
+                        </div>
+                     </div>
+
+                     <div className="grid grid-cols-3 gap-3 mb-6">
+                        <div className="bg-gray-50 p-4 rounded-2xl border text-center">
+                          <p className="text-3xl font-black text-blue-600">{profile.winPct}%</p>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Win Rate</p>
+                        </div>
+                        <div className="bg-gray-50 p-4 rounded-2xl border text-center">
+                          <p className="text-3xl font-black text-gray-800">{profile.w}</p>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Wins</p>
+                        </div>
+                        <div className="bg-gray-50 p-4 rounded-2xl border text-center">
+                          <p className="text-3xl font-black text-gray-800">{profile.p}</p>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Matches</p>
+                        </div>
+                     </div>
+
+                     <div className="space-y-3">
+                        <div className="flex justify-between items-center p-3 bg-green-50 rounded-xl border border-green-100">
+                           <span className="text-xs font-bold text-green-700 uppercase tracking-widest">Biggest Win</span>
+                           <span className="font-black text-gray-800">{profile.biggestWin}</span>
+                        </div>
+                        <div className="flex justify-between items-center p-3 bg-red-50 rounded-xl border border-red-100">
+                           <span className="text-xs font-bold text-red-700 uppercase tracking-widest">Worst Defeat</span>
+                           <span className="font-black text-gray-800">{profile.worstDefeat}</span>
+                        </div>
+                        
+                        <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border">
+                           <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Record Signing</span>
+                           {profile.biggestTransfer ? (
+                             <span className="font-black text-gray-800 text-right">
+                               {profile.biggestTransfer.player_name} <span className="text-blue-600 text-sm ml-1">(£{Math.abs(profile.biggestTransfer.transfer_fee)}M)</span>
+                             </span>
+                           ) : (
+                             <span className="font-bold text-gray-400 italic">None logged</span>
+                           )}
+                        </div>
+                     </div>
+                   </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ======================= TRANSFERS TAB ======================= */}
         {activeTab === 'transfers' && (
           <div className="space-y-6 animate-in fade-in duration-300">
@@ -471,7 +683,6 @@ export default function Home() {
             )}
 
             <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-200">
-              {/* Filter Headers */}
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <h2 className="text-2xl font-bold text-gray-800">🔄 Transfer Activity {isTotal && '(All Time)'}</h2>
                 <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
@@ -495,7 +706,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Feed List */}
               <div className="grid gap-4">
                 {displayedTransfers.length > 0 ? (
                   displayedTransfers.slice().reverse().map((transfer) => (
@@ -680,7 +890,6 @@ export default function Home() {
                             </button>
                          )}
 
-                         {/* Admin Removal Button */}
                          {isAdmin && (
                            <button 
                              onClick={() => deleteNomination(nom.id)}
