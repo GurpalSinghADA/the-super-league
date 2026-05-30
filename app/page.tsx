@@ -143,7 +143,7 @@ export default function Home() {
   // Calculate League Table & Form Guide
   const calculateTable = () => {
     let table: Record<string, any> = {};
-    managers.forEach(m => { table[m.id] = { id: m.id, name: m.name, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0, form: [] }; });
+    managers.forEach(m => { table[m.id] = { id: m.id, name: m.name, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0, form: [] as string[] }; });
 
     currentSeasonMatches.forEach(match => {
       if (!table[match.home_manager_id] || !table[match.away_manager_id]) return;
@@ -220,7 +220,7 @@ export default function Home() {
       );
     }
 
-    const achievements = [];
+    const achievements: {icon: string, title: string, desc: string}[] = [];
     if (cleanSheets >= 3) achievements.push({ icon: '🛑', title: 'Park the Bus', desc: '3+ Clean Sheets' });
     if (mNetSpend <= -150) achievements.push({ icon: '💸', title: 'Financial Ruin', desc: 'Net Spend ≤ -£150M' });
     if (scoredFive) achievements.push({ icon: '🏏', title: 'Cricket Score', desc: 'Scored 5+ goals in a game' });
@@ -254,7 +254,7 @@ export default function Home() {
   }
 
   // Generate Breaking News Ticker
-  const tickerEvents = [];
+  const tickerEvents: string[] = [];
   matches.slice(-5).forEach(m => tickerEvents.push(`⚽ RESULT: ${m.home?.name} ${m.home_goals}-${m.away_goals} ${m.away?.name}`));
   transfers.slice(-5).forEach(t => tickerEvents.push(`🤝 TRANSFER: ${t.player_name} ${t.transfer_fee < 0 ? 'signed by' : 'sold by'} ${t.manager?.name} for £${Math.abs(t.transfer_fee)}M`));
   const shuffledTicker = tickerEvents.sort(() => 0.5 - Math.random()).join("   |   ");
