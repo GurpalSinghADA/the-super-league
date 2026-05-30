@@ -6,7 +6,8 @@ import { supabase } from '../utils/supabase';
 const PASSWORDS: Record<string, string> = {
   "Rajat": "Apple",
   "Kola": "Tree",
-  "Gurpal": "Chels"
+  "Gurpal": "Chels",
+  "Sukhi": "Trueee"
 };
 
 export default function Home() {
@@ -232,7 +233,7 @@ export default function Home() {
     await supabase.from('award_votes').insert([{ nomination_id: nomination.id, voter_id: myManagerId, season_id: nomination.season_id }]);
   };
 
-  // --- NEW: Admin Remove Nomination ---
+  // --- Admin Remove Nomination ---
   const deleteNomination = async (nominationId: string) => {
     if (!isAdmin) return;
     const confirmDelete = window.confirm("Commissioner Action: Are you sure you want to remove this nomination?");
