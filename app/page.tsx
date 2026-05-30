@@ -651,7 +651,7 @@ export default function Home() {
                 className={`min-w-[90px] py-2.5 px-3 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2 ${activeTab === tab.id ? 'bg-white text-blue-600 shadow-sm border border-gray-200' : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'}`}
               >
                 {tab.id === 'ebay' ? (
-                  <img src="/ebay-logo.png" alt="eBay" className="h-4 w-auto object-contain" />
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" alt="eBay" className="h-4 w-auto object-contain" />
                 ) : (
                   <span>{tab.icon}</span>
                 )}
@@ -1084,7 +1084,7 @@ export default function Home() {
              className={`flex flex-col items-center justify-center w-[70px] min-w-[70px] py-1 gap-1 transition-all rounded-xl ${activeTab === tab.id ? 'text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}
            >
              {tab.id === 'ebay' ? (
-                <img src="/ebay-logo.png" alt="eBay" className="h-6 w-auto object-contain mb-0.5" />
+                <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" alt="eBay" className="h-6 w-auto object-contain mb-0.5" />
              ) : (
                 <span className="text-xl mb-0.5">{tab.icon}</span>
              )}
