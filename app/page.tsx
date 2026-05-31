@@ -81,6 +81,11 @@ export default function Home() {
   const [ukTime, setUkTime] = useState<string>('');
   const [currentTime, setCurrentTime] = useState(Date.now());
   const finishedAuctionsRef = useRef(new Set<string>());
+  
+  // -------------------------------------------------------------
+  // ATOMIC CLOCK SYNC
+  // -------------------------------------------------------------
+  const timeOffsetRef = useRef(0);
 
   // Form States
   const [homeTeamId, setHomeTeamId] = useState('');
@@ -96,9 +101,26 @@ export default function Home() {
   const [nominationName, setNominationName] = useState('');
 
   useEffect(() => {
+    // 1. Fetch exact server time to fix drift between laptops & phones
+    async function syncClock() {
+      try {
+        const res = await fetch(window.location.href, { method: 'HEAD', cache: 'no-store' });
+        const dateHeader = res.headers.get('date');
+        if (dateHeader) {
+          const exactServerTime = new Date(dateHeader).getTime();
+          timeOffsetRef.current = exactServerTime - Date.now();
+        }
+      } catch (err) {
+        console.error("Time sync failed, using local clock.", err);
+      }
+    }
+    syncClock();
+
+    // 2. Start perfectly synced global clock
     const timer = setInterval(() => {
-      setUkTime(new Date().toLocaleTimeString('en-GB', { timeZone: 'Europe/London' }));
-      setCurrentTime(Date.now());
+      const syncedNow = Date.now() + timeOffsetRef.current;
+      setUkTime(new Date(syncedNow).toLocaleTimeString('en-GB', { timeZone: 'Europe/London' }));
+      setCurrentTime(syncedNow);
     }, 1000);
 
     async function fetchData() {
@@ -156,22 +178,20 @@ export default function Home() {
     return () => { clearInterval(timer); supabase.removeChannel(channel); };
   }, []);
 
-  // --- REFEREE WHISTLE EFFECT (MAX VOLUME) ---
+  // --- REFEREE WHISTLE EFFECT ---
   useEffect(() => {
     auctions.forEach(auction => {
       if (auction.status === 'active' && auction.end_time) {
         const endTimeMs = new Date(auction.end_time).getTime();
-        const timeLeft = Math.max(0, Math.floor((endTimeMs - Date.now()) / 1000));
-        const timeSinceEnded = Date.now() - endTimeMs;
+        const timeLeft = Math.max(0, Math.floor((endTimeMs - currentTime) / 1000));
+        const timeSinceEnded = currentTime - endTimeMs;
         
         // Play sound if timer just hit 0 (within last 1.5 seconds)
         if (timeLeft === 0 && timeSinceEnded >= 0 && timeSinceEnded < 1500 && !finishedAuctionsRef.current.has(auction.id)) {
           finishedAuctionsRef.current.add(auction.id);
           const audio = new Audio('https://actions.google.com/sounds/v1/sports/referee_whistle.ogg');
-          audio.volume = 1.0; // MAX VOLUME CRANKED TO 100%
-          audio.play().catch(() => {
-             console.log("Browser blocked auto-play sound.");
-          });
+          audio.volume = 1.0;
+          audio.play().catch(() => console.log("Browser blocked auto-play sound."));
         }
       }
     });
@@ -237,6 +257,7 @@ export default function Home() {
     if (otherInterests.length > 0) {
        const { data: existingAuction } = await supabase.from('auctions').select('*').eq('player_name', player.player_name).neq('status', 'archived');
        if (!existingAuction || existingAuction.length === 0) {
+           const syncedNow = Date.now() + timeOffsetRef.current;
            await supabase.from('auctions').insert([{ 
              season_id: selectedSeasonId, 
              player_name: player.player_name, 
@@ -406,16 +427,21 @@ export default function Home() {
 
   const startAuctionTimer = async (aId: string) => {
     if (!isAdmin && password !== "1" && window.prompt("Admin Password:") !== "1") return alert("Incorrect password.");
-    await supabase.from('auctions').update({ status: 'active', end_time: new Date(Date.now() + 30000).toISOString() }).eq('id', aId);
+    const syncedNow = Date.now() + timeOffsetRef.current;
+    await supabase.from('auctions').update({ status: 'active', end_time: new Date(syncedNow + 30000).toISOString() }).eq('id', aId);
   };
 
   const placeBid = async (aId: string, currentBid: number, currentEndTime: string) => {
     const bidValue = bidInputs[aId];
     if (!bidValue || bidValue <= currentBid) return alert("Bid must be higher than current bid!");
+    
+    const syncedNow = Date.now() + timeOffsetRef.current;
     const endTimeMs = new Date(currentEndTime).getTime();
-    const timeLeftMs = endTimeMs - Date.now();
+    const timeLeftMs = endTimeMs - syncedNow;
+    
     let newEndTime = currentEndTime;
-    if (timeLeftMs < 5000) newEndTime = new Date(Date.now() + 10000).toISOString();
+    if (timeLeftMs < 5000) newEndTime = new Date(syncedNow + 10000).toISOString();
+    
     await supabase.from('auctions').update({ current_bid: bidValue, highest_bidder_id: myManagerId, end_time: newEndTime }).eq('id', aId);
     setBidInputs({ ...bidInputs, [aId]: '' as any });
   };
