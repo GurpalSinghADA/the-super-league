@@ -156,7 +156,7 @@ export default function Home() {
     return () => { clearInterval(timer); supabase.removeChannel(channel); };
   }, []);
 
-  // --- REFEREE WHISTLE EFFECT ---
+  // --- REFEREE WHISTLE EFFECT (MAX VOLUME) ---
   useEffect(() => {
     auctions.forEach(auction => {
       if (auction.status === 'active' && auction.end_time) {
@@ -168,7 +168,7 @@ export default function Home() {
         if (timeLeft === 0 && timeSinceEnded >= 0 && timeSinceEnded < 1500 && !finishedAuctionsRef.current.has(auction.id)) {
           finishedAuctionsRef.current.add(auction.id);
           const audio = new Audio('https://actions.google.com/sounds/v1/sports/referee_whistle.ogg');
-          audio.volume = 0.5;
+          audio.volume = 1.0; // MAX VOLUME CRANKED TO 100%
           audio.play().catch(() => {
              console.log("Browser blocked auto-play sound.");
           });
