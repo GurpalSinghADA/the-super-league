@@ -402,10 +402,30 @@ export default function Home() {
     await supabase.from('auctions').update({ status: 'active', end_time: new Date(Date.now() + 30000).toISOString() }).eq('id', aId);
   };
 
+  // -------------------------------------------------------------
+  // AUCTION OVERTIME LOGIC (ANTI-SNIPING)
+  // -------------------------------------------------------------
   const placeBid = async (aId: string, currentBid: number, currentEndTime: string) => {
     const bidValue = bidInputs[aId];
     if (!bidValue || bidValue <= currentBid) return alert("Bid must be higher than current bid!");
-    await supabase.from('auctions').update({ current_bid: bidValue, highest_bidder_id: myManagerId, end_time: new Date(new Date(currentEndTime).getTime() + 10000).toISOString() }).eq('id', aId);
+    
+    // Check remaining time
+    const endTimeMs = new Date(currentEndTime).getTime();
+    const timeLeftMs = endTimeMs - Date.now();
+    
+    let newEndTime = currentEndTime;
+    
+    // If the bid is placed with less than 5 seconds remaining, reset clock to 10 seconds.
+    if (timeLeftMs < 5000) {
+      newEndTime = new Date(Date.now() + 10000).toISOString();
+    }
+
+    await supabase.from('auctions').update({ 
+      current_bid: bidValue, 
+      highest_bidder_id: myManagerId, 
+      end_time: newEndTime 
+    }).eq('id', aId);
+    
     setBidInputs({ ...bidInputs, [aId]: '' as any });
   };
 
