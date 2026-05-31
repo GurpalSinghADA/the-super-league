@@ -175,6 +175,16 @@ export default function Home() {
   const currentSeasonAuctions = isTotal ? auctions : auctions.filter(auction => auction.season_id === selectedSeasonId);
   const currentSeasonNominations = isTotal ? nominations : nominations.filter(nom => nom.season_id === selectedSeasonId);
 
+  // RESTORED DISPLAYED TRANSFERS LOGIC
+  const displayedTransfers = currentSeasonTransfers.filter(t => {
+    const matchManager = transferManagerFilter === 'all' || t.manager_id === transferManagerFilter;
+    const matchType = 
+      transferTypeFilter === 'all' || 
+      (transferTypeFilter === 'in' && t.transfer_fee < 0) || 
+      (transferTypeFilter === 'out' && t.transfer_fee > 0);
+    return matchManager && matchType;
+  });
+
   // --- MARKET LOGIC ---
   const handleSort = (key: string) => {
     setMarketSort(prev => ({ key, dir: prev.key === key && prev.dir === 'desc' ? 'asc' : 'desc' }));
@@ -313,7 +323,51 @@ export default function Home() {
   transfers.slice(-5).forEach(t => tickerEvents.push(`🤝 TRANSFER: ${t.player_name} ${t.transfer_fee < 0 ? 'signed by' : 'sold by'} ${t.manager?.name} for £${Math.abs(t.transfer_fee)}M`));
   const shuffledTicker = tickerEvents.sort(() => 0.5 - Math.random()).join("   |   ");
 
-  // Actions
+  const calculateHallOfFame = () => {
+    let mostExpensiveTransfer: any = null; let maxFee = -1;
+    let biggestDemolition: any = null; let maxMargin = -1;
+    let highestScoringGame: any = null; let maxGoals = -1;
+    let maxPointsRecord: any = null; let maxPts = -1;
+
+    transfers.forEach(t => {
+      const fee = Math.abs(Number(t.transfer_fee));
+      if (fee > maxFee) { maxFee = fee; mostExpensiveTransfer = { ...t, absFee: fee, seasonName: seasons.find(s => s.id === t.season_id)?.name }; }
+    });
+
+    matches.forEach(m => {
+      const margin = Math.abs(m.home_goals - m.away_goals);
+      if (margin > maxMargin) { maxMargin = margin; biggestDemolition = { ...m, margin, seasonName: seasons.find(s => s.id === m.season_id)?.name }; }
+      const totalGoals = m.home_goals + m.away_goals;
+      if (totalGoals > maxGoals) { maxGoals = totalGoals; highestScoringGame = { ...m, totalGoals, seasonName: seasons.find(s => s.id === m.season_id)?.name }; }
+    });
+
+    const seasonManagerPoints: Record<string, number> = {};
+    matches.forEach(match => {
+      const sId = match.season_id; 
+      const keyHome = `${sId}_${match.home_manager_id}`; 
+      const keyAway = `${sId}_${match.away_manager_id}`;
+      
+      if (!seasonManagerPoints[keyHome]) seasonManagerPoints[keyHome] = 0;
+      if (!seasonManagerPoints[keyAway]) seasonManagerPoints[keyAway] = 0;
+      
+      if (match.home_goals > match.away_goals) {
+        seasonManagerPoints[keyHome] += 3; 
+      } else if (match.home_goals < match.away_goals) {
+        seasonManagerPoints[keyAway] += 3; 
+      } else { 
+        seasonManagerPoints[keyHome] += 1; 
+        seasonManagerPoints[keyAway] += 1; 
+      }
+    });
+
+    Object.entries(seasonManagerPoints).forEach(([key, pts]) => {
+      if (pts > maxPts) { maxPts = pts; const [sId, mId] = key.split('_'); maxPointsRecord = { managerName: managers.find(x => x.id === mId)?.name, seasonName: seasons.find(x => x.id === sId)?.name, points: pts }; }
+    });
+    return { mostExpensiveTransfer, biggestDemolition, highestScoringGame, maxPointsRecord };
+  };
+  const hof = calculateHallOfFame();
+
+  // --- ACTIONS ---
   const submitMatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isTotal) return alert("Select a specific season to log a match!");
