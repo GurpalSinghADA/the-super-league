@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../utils/supabase';
 
 // Personal Passwords Dictionary
@@ -80,6 +80,7 @@ export default function Home() {
 
   const [ukTime, setUkTime] = useState<string>('');
   const [currentTime, setCurrentTime] = useState(Date.now());
+  const finishedAuctionsRef = useRef(new Set<string>());
 
   // Form States
   const [homeTeamId, setHomeTeamId] = useState('');
@@ -155,6 +156,27 @@ export default function Home() {
     return () => { clearInterval(timer); supabase.removeChannel(channel); };
   }, []);
 
+  // --- REFEREE WHISTLE EFFECT ---
+  useEffect(() => {
+    auctions.forEach(auction => {
+      if (auction.status === 'active' && auction.end_time) {
+        const endTimeMs = new Date(auction.end_time).getTime();
+        const timeLeft = Math.max(0, Math.floor((endTimeMs - Date.now()) / 1000));
+        const timeSinceEnded = Date.now() - endTimeMs;
+        
+        // Play sound if timer just hit 0 (within last 1.5 seconds)
+        if (timeLeft === 0 && timeSinceEnded >= 0 && timeSinceEnded < 1500 && !finishedAuctionsRef.current.has(auction.id)) {
+          finishedAuctionsRef.current.add(auction.id);
+          const audio = new Audio('https://actions.google.com/sounds/v1/sports/referee_whistle.ogg');
+          audio.volume = 0.5;
+          audio.play().catch(() => {
+             console.log("Browser blocked auto-play sound.");
+          });
+        }
+      }
+    });
+  }, [currentTime, auctions]);
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const selectedManager = managers.find(m => m.id === loginManagerId);
@@ -175,7 +197,6 @@ export default function Home() {
   const currentSeasonAuctions = isTotal ? auctions : auctions.filter(auction => auction.season_id === selectedSeasonId);
   const currentSeasonNominations = isTotal ? nominations : nominations.filter(nom => nom.season_id === selectedSeasonId);
 
-  // RESTORED DISPLAYED TRANSFERS LOGIC
   const displayedTransfers = currentSeasonTransfers.filter(t => {
     const matchManager = transferManagerFilter === 'all' || t.manager_id === transferManagerFilter;
     const matchType = 
@@ -210,13 +231,10 @@ export default function Home() {
       return;
     }
 
-    // Insert interest
     await supabase.from('player_interests').insert([{ player_id: player.id, manager_id: myManagerId }]);
     
-    // Check if someone else was already interested
     const otherInterests = interests.filter(i => i.player_id === player.id && i.manager_id !== myManagerId);
     if (otherInterests.length > 0) {
-       // AUCTION TRIGGERED!
        const { data: existingAuction } = await supabase.from('auctions').select('*').eq('player_name', player.player_name).neq('status', 'archived');
        if (!existingAuction || existingAuction.length === 0) {
            await supabase.from('auctions').insert([{ 
@@ -233,7 +251,6 @@ export default function Home() {
   const activeAuctionNames = auctions.map(a => a.player_name);
   
   let displayedMarketPlayers = marketPlayers.filter(player => {
-    // Hide players that are currently in an active auction
     if (activeAuctionNames.includes(player.player_name)) return false;
     if (showOnlyShortlist && !shortlists.some(s => s.player_id === player.id && s.manager_id === myManagerId)) return false;
     const matchSearch = player.player_name?.toLowerCase().includes(marketSearchQuery.toLowerCase()) || player.club?.toLowerCase().includes(marketSearchQuery.toLowerCase());
@@ -241,7 +258,6 @@ export default function Home() {
     return matchSearch && matchPos;
   });
 
-  // Apply sorting
   displayedMarketPlayers.sort((a, b) => {
     let valA = a.market_value_gbp || 0; let valB = b.market_value_gbp || 0;
     if (marketSort.key === 'age') { valA = a.age || 0; valB = b.age || 0; }
@@ -303,7 +319,6 @@ export default function Home() {
     return { ...m, net };
   });
 
-  // H2H Logic
   let h2hStats = { p: 0, aWins: 0, bWins: 0, d: 0, aGoals: 0, bGoals: 0, matches: [] as any[] };
   if (h2hManagerA && h2hManagerB && h2hManagerA !== h2hManagerB) {
     const h2hMatches = currentSeasonMatches.filter(m => (m.home_manager_id === h2hManagerA && m.away_manager_id === h2hManagerB) || (m.home_manager_id === h2hManagerB && m.away_manager_id === h2hManagerA));
@@ -346,18 +361,11 @@ export default function Home() {
       const sId = match.season_id; 
       const keyHome = `${sId}_${match.home_manager_id}`; 
       const keyAway = `${sId}_${match.away_manager_id}`;
-      
       if (!seasonManagerPoints[keyHome]) seasonManagerPoints[keyHome] = 0;
       if (!seasonManagerPoints[keyAway]) seasonManagerPoints[keyAway] = 0;
-      
-      if (match.home_goals > match.away_goals) {
-        seasonManagerPoints[keyHome] += 3; 
-      } else if (match.home_goals < match.away_goals) {
-        seasonManagerPoints[keyAway] += 3; 
-      } else { 
-        seasonManagerPoints[keyHome] += 1; 
-        seasonManagerPoints[keyAway] += 1; 
-      }
+      if (match.home_goals > match.away_goals) { seasonManagerPoints[keyHome] += 3; } 
+      else if (match.home_goals < match.away_goals) { seasonManagerPoints[keyAway] += 3; } 
+      else { seasonManagerPoints[keyHome] += 1; seasonManagerPoints[keyAway] += 1; }
     });
 
     Object.entries(seasonManagerPoints).forEach(([key, pts]) => {
@@ -367,7 +375,6 @@ export default function Home() {
   };
   const hof = calculateHallOfFame();
 
-  // --- ACTIONS ---
   const submitMatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isTotal) return alert("Select a specific season to log a match!");
@@ -402,30 +409,14 @@ export default function Home() {
     await supabase.from('auctions').update({ status: 'active', end_time: new Date(Date.now() + 30000).toISOString() }).eq('id', aId);
   };
 
-  // -------------------------------------------------------------
-  // AUCTION OVERTIME LOGIC (ANTI-SNIPING)
-  // -------------------------------------------------------------
   const placeBid = async (aId: string, currentBid: number, currentEndTime: string) => {
     const bidValue = bidInputs[aId];
     if (!bidValue || bidValue <= currentBid) return alert("Bid must be higher than current bid!");
-    
-    // Check remaining time
     const endTimeMs = new Date(currentEndTime).getTime();
     const timeLeftMs = endTimeMs - Date.now();
-    
     let newEndTime = currentEndTime;
-    
-    // If the bid is placed with less than 5 seconds remaining, reset clock to 10 seconds.
-    if (timeLeftMs < 5000) {
-      newEndTime = new Date(Date.now() + 10000).toISOString();
-    }
-
-    await supabase.from('auctions').update({ 
-      current_bid: bidValue, 
-      highest_bidder_id: myManagerId, 
-      end_time: newEndTime 
-    }).eq('id', aId);
-    
+    if (timeLeftMs < 5000) newEndTime = new Date(Date.now() + 10000).toISOString();
+    await supabase.from('auctions').update({ current_bid: bidValue, highest_bidder_id: myManagerId, end_time: newEndTime }).eq('id', aId);
     setBidInputs({ ...bidInputs, [aId]: '' as any });
   };
 
@@ -451,7 +442,6 @@ export default function Home() {
 
   const deleteNomination = async (nId: string) => { if (isAdmin && window.confirm("Remove nomination?")) await supabase.from('award_nominations').delete().eq('id', nId); };
 
-  // --- SQUAD BUILDER LOGIC ---
   const handlePositionClick = (mId: string, pos: string) => { if (mId !== myManagerId) return; setActiveLineupPosition(pos); setIsLineupModalOpen(true); };
   const saveSquadPlayer = async (name: string) => {
     const fn = name.trim(); if (!fn) return;
@@ -633,15 +623,12 @@ export default function Home() {
                             <td className="p-4"><div className="font-black text-gray-800">{player.club}</div><div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">{player.league}</div></td>
                             <td className="p-4 text-right font-black text-gray-900 text-lg">{player.market_value_display}</td>
                             <td className="p-4 flex justify-center items-center gap-2 h-full min-h-[60px]">
-                              {/* Action Buttons */}
                               <button onClick={() => toggleShortlist(player.id)} title="Add to Private Shortlist" className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${isShortlisted ? 'bg-indigo-100 text-indigo-600 border border-indigo-200 shadow-inner' : 'text-gray-300 hover:bg-gray-100 hover:text-gray-600'}`}>
                                 {isShortlisted ? '📌' : '📍'}
                               </button>
                               <button onClick={() => declareInterest(player)} title="Publicly Scout Player" className={`px-3 py-1.5 rounded-lg font-black text-xs uppercase tracking-widest transition-all shadow-sm border ${isInterested ? 'bg-red-50 text-red-600 border-red-200' : 'bg-white text-gray-500 hover:bg-gray-50 border-gray-200 hover:border-gray-300'}`}>
                                 {isInterested ? '👀 Scouting' : '👀 Scout'}
                               </button>
-                              
-                              {/* Show badges of interested managers */}
                               {playerInterests.length > 0 && (
                                 <div className="flex -space-x-2 ml-2">
                                   {playerInterests.map(pi => {
