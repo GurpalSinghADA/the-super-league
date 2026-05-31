@@ -21,6 +21,7 @@ const CLUB_LOGOS: Record<string, string> = {
 const TABS = [
   { id: 'league', icon: '⚽', label: 'League' },
   { id: 'h2h', icon: '⚔️', label: 'H2H' },
+  { id: 'transfer_market', icon: '📊', label: 'Market' },
   { id: 'profiles', icon: '🛡️', label: 'Profiles' },
   { id: 'hof', icon: '🏛️', label: 'HOF' },
   { id: 'transfers', icon: '🤝', label: 'Transfers' },
@@ -74,6 +75,7 @@ export default function Home() {
   const [nominations, setNominations] = useState<any[]>([]);
   const [votes, setVotes] = useState<any[]>([]);
   const [lineups, setLineups] = useState<any[]>([]);
+  const [marketPlayers, setMarketPlayers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
   // App States
@@ -85,6 +87,10 @@ export default function Home() {
   // Transfer Filter States
   const [transferManagerFilter, setTransferManagerFilter] = useState<string>('all');
   const [transferTypeFilter, setTransferTypeFilter] = useState<string>('all');
+
+  // Market Filter States
+  const [marketSearchQuery, setMarketSearchQuery] = useState('');
+  const [marketPositionFilter, setMarketPositionFilter] = useState('All');
 
   // H2H States
   const [h2hManagerA, setH2hManagerA] = useState('');
@@ -134,6 +140,7 @@ export default function Home() {
       }
       fetchAuctions();
       fetchAwards();
+      fetchMarketPlayers();
       setLoading(false);
     }
     
@@ -152,6 +159,12 @@ export default function Home() {
     async function fetchLineups() {
       const { data } = await supabase.from('lineups').select('*');
       if (data) setLineups(data);
+    }
+
+    async function fetchMarketPlayers() {
+      // Limiting to 500 so the app doesn't lag if the CSV is massive
+      const { data } = await supabase.from('transfer_market_players').select('*').order('market_value_gbp', { ascending: false }).limit(500);
+      if (data) setMarketPlayers(data);
     }
 
     fetchData();
@@ -173,9 +186,7 @@ export default function Home() {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const selectedManager = managers.find(m => m.id === loginManagerId);
-    
     if (!selectedManager) return alert("Please select your name!");
-    
     if (PASSWORDS[selectedManager.name] === loginPassword) {
       setMyManagerId(loginManagerId);
       setIsAuthenticated(true);      
@@ -200,6 +211,12 @@ export default function Home() {
       (transferTypeFilter === 'in' && t.transfer_fee < 0) || 
       (transferTypeFilter === 'out' && t.transfer_fee > 0);
     return matchManager && matchType;
+  });
+
+  const displayedMarketPlayers = marketPlayers.filter(player => {
+    const matchSearch = player.player_name?.toLowerCase().includes(marketSearchQuery.toLowerCase()) || player.club?.toLowerCase().includes(marketSearchQuery.toLowerCase());
+    const matchPos = marketPositionFilter === 'All' || player.position === marketPositionFilter;
+    return matchSearch && matchPos;
   });
 
   // Calculate League Table
@@ -441,21 +458,16 @@ export default function Home() {
       alert("Database Error: Could not save player! Make sure you ran the SQL command to create the 'lineups' table in Supabase.");
     }
     
-    // Force UI Refresh Instantly
     const { data } = await supabase.from('lineups').select('*');
     if (data) setLineups(data);
-    
     setIsLineupModalOpen(false);
     setCustomPlayerName('');
   };
 
   const clearSquadPlayer = async () => {
     await supabase.from('lineups').delete().match({ manager_id: myManagerId, position: activeLineupPosition });
-    
-    // Force UI Refresh Instantly
     const { data } = await supabase.from('lineups').select('*');
     if (data) setLineups(data);
-    
     setIsLineupModalOpen(false);
   };
 
@@ -464,10 +476,9 @@ export default function Home() {
     const { error } = await supabase.from('lineups').insert([{ manager_id: myManagerId, position: 'FORMATION', player_name: newFormation }]);
     
     if (error) {
-      alert("Database Error: Could not change formation! Make sure you ran the SQL command to create the 'lineups' table in Supabase.");
+      alert("Database Error: Could not change formation!");
     }
 
-    // Force UI Refresh Instantly
     const { data } = await supabase.from('lineups').select('*');
     if (data) setLineups(data);
   };
@@ -494,23 +505,14 @@ export default function Home() {
         <div className={`absolute top-0.5 left-1 text-[8px] sm:text-[10px] font-black ${hasPlayer ? 'text-yellow-900' : 'text-gray-400'}`}>
           {pos}
         </div>
-        
         <div className="mt-3 sm:mt-4 w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center">
-          {hasPlayer ? (
-            <span className="text-xl sm:text-2xl drop-shadow-sm">👤</span>
-          ) : (
-            <span className="text-gray-400 text-sm font-black">+</span>
-          )}
+          {hasPlayer ? (<span className="text-xl sm:text-2xl drop-shadow-sm">👤</span>) : (<span className="text-gray-400 text-sm font-black">+</span>)}
         </div>
-        
         {hasPlayer && (
           <div className="absolute bottom-1 w-full text-center px-0.5">
-            <span className="text-[8px] sm:text-[9px] font-black text-yellow-900 leading-tight uppercase truncate block drop-shadow-sm">
-              {lineupEntry.player_name}
-            </span>
+            <span className="text-[8px] sm:text-[9px] font-black text-yellow-900 leading-tight uppercase truncate block drop-shadow-sm">{lineupEntry.player_name}</span>
           </div>
         )}
-        
         {!hasPlayer && isMine && (
           <div className="absolute inset-0 bg-blue-600/80 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
             <span className="text-[10px] font-black text-white uppercase tracking-widest">Add</span>
@@ -531,9 +533,7 @@ export default function Home() {
         <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border border-gray-200 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-cyan-400"></div>
           <div className="text-center mb-8">
-            <h1 className="text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
-              The Super League
-            </h1>
+            <h1 className="text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">The Super League</h1>
             <p className="mt-2 text-gray-500 font-medium">Please sign in to continue</p>
           </div>
           <form onSubmit={handleLogin} className="space-y-6">
@@ -547,9 +547,7 @@ export default function Home() {
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Password</label>
               <input type="password" placeholder="Enter password" className="w-full p-4 bg-gray-50 border border-gray-200 text-gray-900 placeholder-gray-400 rounded-xl font-bold focus:ring-2 focus:ring-blue-500 outline-none shadow-sm" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} />
             </div>
-            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl shadow-md transition-all active:scale-95 text-lg uppercase tracking-wider">
-              Enter Locker Room
-            </button>
+            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl shadow-md transition-all active:scale-95 text-lg uppercase tracking-wider">Enter Locker Room</button>
           </form>
         </div>
       </div>
@@ -576,25 +574,9 @@ export default function Home() {
               <div className="space-y-6">
                  <div>
                     <label className="text-xs font-black uppercase text-gray-400 tracking-widest mb-2 block">Custom Input</label>
-                    <form 
-                      onSubmit={(e) => { e.preventDefault(); saveSquadPlayer(customPlayerName); }} 
-                      className="flex gap-2"
-                    >
-                       <input 
-                         type="text" 
-                         placeholder="Enter player name..." 
-                         className="flex-1 p-3 bg-white border border-gray-200 text-gray-900 rounded-xl font-bold outline-none focus:border-blue-500 transition-colors"
-                         value={customPlayerName}
-                         onChange={(e) => setCustomPlayerName(e.target.value)}
-                         autoFocus
-                       />
-                       <button 
-                         type="submit" 
-                         disabled={!customPlayerName.trim()}
-                         className="bg-blue-600 disabled:bg-blue-300 text-white px-6 rounded-xl font-black hover:bg-blue-700 transition-colors shadow-md"
-                       >
-                         SAVE
-                       </button>
+                    <form onSubmit={(e) => { e.preventDefault(); saveSquadPlayer(customPlayerName); }} className="flex gap-2">
+                       <input type="text" placeholder="Enter player name..." className="flex-1 p-3 bg-white border border-gray-200 text-gray-900 rounded-xl font-bold outline-none focus:border-blue-500 transition-colors" value={customPlayerName} onChange={(e) => setCustomPlayerName(e.target.value)} autoFocus />
+                       <button type="submit" disabled={!customPlayerName.trim()} className="bg-blue-600 disabled:bg-blue-300 text-white px-6 rounded-xl font-black hover:bg-blue-700 transition-colors shadow-md">SAVE</button>
                     </form>
                  </div>
 
@@ -603,13 +585,7 @@ export default function Home() {
                       <label className="text-xs font-black uppercase text-gray-400 tracking-widest mb-3 block border-t border-gray-100 pt-4">Your Transfers</label>
                       <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-1 custom-scrollbar">
                          {mySignedPlayers.map(pName => (
-                            <button 
-                              key={pName} 
-                              onClick={() => saveSquadPlayer(pName)}
-                              className="bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-600 hover:text-white px-4 py-2 rounded-lg font-bold text-sm transition-colors shadow-sm"
-                            >
-                              {pName}
-                            </button>
+                            <button key={pName} onClick={() => saveSquadPlayer(pName)} className="bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-600 hover:text-white px-4 py-2 rounded-lg font-bold text-sm transition-colors shadow-sm">{pName}</button>
                          ))}
                       </div>
                    </div>
@@ -650,11 +626,7 @@ export default function Home() {
                 onClick={() => setActiveTab(tab.id)} 
                 className={`min-w-[90px] py-2.5 px-3 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2 ${activeTab === tab.id ? 'bg-white text-blue-600 shadow-sm border border-gray-200' : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'}`}
               >
-                {tab.id === 'ebay' ? (
-                  <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" alt="eBay" className="h-4 w-auto object-contain" />
-                ) : (
-                  <span>{tab.icon}</span>
-                )}
+                <span>{tab.icon}</span>
                 {tab.label}
               </button>
             ))}
@@ -673,6 +645,65 @@ export default function Home() {
             </div>
           </div>
         </div>
+
+        {/* ======================= TRANSFER MARKET TAB (NEW) ======================= */}
+        {activeTab === 'transfer_market' && (
+           <div className="space-y-6 animate-in fade-in duration-300">
+             <div className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-gray-200">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                  <div>
+                    <h2 className="text-2xl font-black text-gray-900 flex items-center gap-2">📊 Global Transfer Market</h2>
+                    <p className="text-sm font-bold text-gray-500 mt-1">Browse and scout available players.</p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                    <input type="text" placeholder="Search player or club..." className="p-3 bg-gray-50 border border-gray-200 text-gray-900 font-bold rounded-xl text-sm outline-none focus:border-blue-500 w-full sm:w-auto" value={marketSearchQuery} onChange={(e) => setMarketSearchQuery(e.target.value)} />
+                    <select className="p-3 bg-gray-50 border border-gray-200 text-gray-900 font-bold rounded-xl text-sm outline-none cursor-pointer focus:border-blue-500 w-full sm:w-auto" value={marketPositionFilter} onChange={(e) => setMarketPositionFilter(e.target.value)}>
+                      <option value="All">All Positions</option>
+                      <option value="Centre-Forward">Centre-Forward</option>
+                      <option value="Left Winger">Left Winger</option>
+                      <option value="Right Winger">Right Winger</option>
+                      <option value="Attacking Midfield">Attacking Midfield</option>
+                      <option value="Central Midfield">Central Midfield</option>
+                      <option value="Defensive Midfield">Defensive Midfield</option>
+                      <option value="Centre-Back">Centre-Back</option>
+                      <option value="Left-Back">Left-Back</option>
+                      <option value="Right-Back">Right-Back</option>
+                      <option value="Goalkeeper">Goalkeeper</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto rounded-2xl border border-gray-100">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 text-[10px] uppercase tracking-widest font-black">
+                        <th className="p-4">Player</th>
+                        <th className="p-4">Position</th>
+                        <th className="p-4">Age</th>
+                        <th className="p-4">Club / League</th>
+                        <th className="p-4 text-right">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {displayedMarketPlayers.length > 0 ? (
+                        displayedMarketPlayers.map((player) => (
+                          <tr key={player.id} className="hover:bg-blue-50/50 transition-colors">
+                            <td className="p-4 font-black text-gray-900">{player.player_name}</td>
+                            <td className="p-4"><span className="bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-lg text-xs font-black tracking-wide">{player.position}</span></td>
+                            <td className="p-4 font-bold text-gray-500">{player.age}</td>
+                            <td className="p-4"><div className="font-black text-gray-800">{player.club}</div><div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">{player.league}</div></td>
+                            <td className="p-4 text-right font-black text-gray-900 text-lg">{player.market_value_display}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr><td colSpan={5} className="p-12 text-center text-gray-400 font-bold border-2 border-dashed border-gray-200 rounded-2xl">No players found matching your search.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+             </div>
+           </div>
+        )}
 
         {/* ======================= LEAGUE TAB ======================= */}
         {activeTab === 'league' && (
@@ -938,7 +969,13 @@ export default function Home() {
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className="bg-gray-900 border border-gray-800 text-white p-6 rounded-3xl shadow-xl flex flex-col md:flex-row justify-between items-center gap-4 relative overflow-hidden">
                <div className="absolute inset-0 bg-gradient-to-r from-blue-900/40 to-gray-900 opacity-50 mix-blend-overlay"></div>
-               <div className="z-10 flex items-center gap-3"><div className="h-4 w-4 bg-red-500 rounded-full animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.8)]"></div><h2 className="text-2xl font-black tracking-widest uppercase">Live Auction House</h2></div>
+               <div className="z-10 flex items-center gap-3">
+                 <div className="h-4 w-4 bg-red-500 rounded-full animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.8)]"></div>
+                 <h2 className="text-2xl font-black tracking-widest uppercase flex items-center gap-3">
+                   Live Auction House
+                   <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" alt="eBay" className="h-8 w-auto object-contain bg-white/90 px-3 py-1 rounded-xl shadow-sm" />
+                 </h2>
+               </div>
                <div className="z-10 font-mono text-xl font-bold bg-gray-950 px-6 py-2.5 rounded-xl border border-gray-700 shadow-inner text-cyan-400">UK: {ukTime}</div>
             </div>
             {!isTotal && (
@@ -1083,11 +1120,7 @@ export default function Home() {
              onClick={() => setActiveTab(tab.id)} 
              className={`flex flex-col items-center justify-center w-[70px] min-w-[70px] py-1 gap-1 transition-all rounded-xl ${activeTab === tab.id ? 'text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}
            >
-             {tab.id === 'ebay' ? (
-                <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" alt="eBay" className="h-6 w-auto object-contain mb-0.5" />
-             ) : (
-                <span className="text-xl mb-0.5">{tab.icon}</span>
-             )}
+             <span className="text-xl mb-0.5">{tab.icon}</span>
              <span className="text-[9px] font-black uppercase tracking-widest">{tab.label}</span>
              {/* Active Indicator dot */}
              <div className={`h-1 w-1 rounded-full mt-0.5 ${activeTab === tab.id ? 'bg-blue-600' : 'bg-transparent'}`}></div>
